@@ -1,0 +1,4 @@
+*.o
+main
+libbst.a
+libbst.so
