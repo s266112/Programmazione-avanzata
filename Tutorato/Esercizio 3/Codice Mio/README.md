@@ -1,6 +1,6 @@
 # Unrolled Linked List vs Linked List: Performance Analysis
 
-Questo progetto analizza come strutture dati con la stessa complessità asintotica ($O(n)$) possano avere performance reali drasticamente differenti grazie all'ottimizzazione della memoria e all'uso efficiente della cache.
+Questo progetto analizza come strutture dati con la stessa complessità asintotica **O(n)** possano avere performance reali drasticamente differenti grazie all'ottimizzazione della memoria e all'uso efficiente della cache.
 
 ## 📂 Organizzazione dei File
 Il progetto è suddiviso nei seguenti moduli:
