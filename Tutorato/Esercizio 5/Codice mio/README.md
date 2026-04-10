@@ -7,7 +7,7 @@ L'obiettivo principale è osservare come l'organizzazione dei dati in memoria in
 
 1. **Moltiplicazione Standard (Naive)**: L'approccio classico riga per colonna che soffre di numerosi "Cache Miss" a causa degli accessi non contigui alla seconda matrice.
 2. **Moltiplicazione Trasposta**: Utilizza una rappresentazione **Column Major** per la seconda matrice[cite: 99]. In questo modo, gli elementi della colonna diventano consecutivi in memoria, permettendo al processore di leggerli in modo lineare.
-3. **Moltiplicazione a Blocchi (Tiling)**: Suddivide le matrici in blocchi di dimensione fissata ($16 \times 16$). Questa tecnica forza il processore a lavorare su porzioni di dati che possono risiedere stabilmente nella cache L1/L2, riducendo i tempi di attesa dalla RAM[cite: 105].
+3. **Moltiplicazione a Blocchi (Tiling)**: Suddivide le matrici in blocchi di dimensione fissata ($16 \times 16$). Questa tecnica forza il processore a lavorare su porzioni di dati che possono risiedere stabilmente nella cache L1/L2, riducendo i tempi di attesa dalla RAM.
 
 ## 📊 Analisi delle Performance
 Eseguendo i benchmark contenuti nel `main.c`, ho analizzato i tempi di esecuzione su matrici di grandi dimensioni ($1000 \times 1000$). 
