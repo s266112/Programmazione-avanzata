@@ -11,7 +11,7 @@
 #include <unistd.h>
 
 /**
-  --- OPEN_IMAGE ---:
+ --- OPEN_IMAGE ---:
  * Crea un collegamento diretto tra il file su disco e la RAM (mmap).
  * Restituisce 0 se tutto va bene, -1 in caso di errore.
  */
@@ -20,12 +20,13 @@ int open_image(char * path, netpbm_ptr img)
   // 1. APERTURA CANALE: Apertura file in lettura/scrittura ("r")
   img->fd = fopen(path, "r+");
   if (img->fd == NULL)
-  return -1;
+    return -1;
 
   //2. MISURAZIONE: Recupero dimensioni totali del file (per mmap)
   struct stat st;
   if (stat(path, &st) != 0)
   {
+    perror("Errore: Impossibile leggere le info del file (stat)");
     fclose (img->fd);
     return -1;
   }
@@ -36,26 +37,28 @@ int open_image(char * path, netpbm_ptr img)
   int max_val;
   if (fscanf(img->fd, "%2s %d %d %d%*c", magic, &img->width, &img->height, &max_val) !=4)
   {
+    fprintf(stderr, "Errore: Formato header PGM non valido o non supportato.\n");
     fclose(img->fd);
     return -1;
   }
 
   /* 4. IL CONFINE (CALCOLO OFFSET):
-       ftell() mi dice dove finisce l'header testuale e iniziano i pixel binari.
+        ftell() mi dice dove finisce l'header testuale e iniziano i pixel binari.
     */
    img->offset = ftell(img->fd);
 
    /* 5. MAPPATURA HARDWARE (mmap):
-       Collego l'intero file allo spazio di indirizzamento della CPU.
-       MAP_SHARED: Assicura che le modifiche fatte in RAM vengono salvate sul disco.
+        Collego l'intero file allo spazio di indirizzamento della CPU.
+        MAP_SHARED: Assicura che le modifiche fatte in RAM vengono salvate sul disco.
     */
    int fd_raw = fileno(img->fd); // Trasforma il puntatore FILE in un numero (ID)
     img->data = mmap(NULL, img->size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_raw, 0);
     
     if (img->data == MAP_FAILED) 
     {
-        fclose(img->fd);
-        return -1;
+      perror("Errore Hardware: Mappatura mmap fallita");
+      fclose(img->fd);
+      return -1;
     }
 
     return 0; // Il file è "mappato" e pronto
@@ -77,22 +80,28 @@ int empty_image(char * path, netpbm_ptr img, int width, int height)
   }
 
   /* 2. SCRITTURA HEADER: 
-     Scrivo l'intestazione standard PGM (P5, dimensioni, max_val 255). 
-     Il valore restituito 'written' mi dice quanti byte occupa questo testo.
+      Scrivo l'intestazione standard PGM (P5, dimensioni, max_val 255). 
+      Il valore restituito 'written' mi dice quanti byte occupa questo testo.
   */
 
   int written = fprintf(fd, "P5\n%d %d\n255\n", width, height);
+  fflush(fd); // Sincronizzo l'header prima di allungare il file
 
   /* 3. PRENOTAZIONE SPAZIO (ftruncate):
-     A livello hardware, dico al sistema di "allungare" il file sul disco.
-     Lo spazio totale deve essere: byte dell'header + (larghezza * altezza) byte di pixel.
-     fileno(fd) serve a trasformare il puntatore C nel descrittore richiesto dal sistema.
+      A livello hardware, dico al sistema di "allungare" il file sul disco.
+      Lo spazio totale deve essere: byte dell'header + (larghezza * altezza) byte di pixel.
+      fileno(fd) serve a trasformare il puntatore C nel descrittore richiesto dal sistema.
   */
-  ftruncate(fileno(fd), written + width * height);
+  if (ftruncate(fileno(fd), (long)written + (long)width * height) != 0)
+  {
+    perror("Errore ftruncate");
+    fclose(fd);
+    return -1;
+  }
 
   /* 4. PASSAGGIO DI CONSEGNE:
-     Chiudo il file temporaneo. Ora che il file esiste ed è grande abbastanza,
-     uso la mia open_image per mapparlo nello spazio di indirizzamento RAM.
+      Chiudo il file temporaneo. Ora che il file esiste ed è grande abbastanza,
+      uso la mia open_image per mapparlo nello spazio di indirizzamento RAM.
   */
   fclose(fd);
   return open_image(path, img);
@@ -105,11 +114,16 @@ int empty_image(char * path, netpbm_ptr img, int width, int height)
 char * pixel_at(netpbm_ptr img, int x, int y)
 {
   /* LOGICA MATEMATICA E HARDWARE:
-     1. img->data: Punto di inizio della memoria mappata (inizio file).
-     2. img->offset: Salto i byte dell'header per non sovrascrivere i metadati.
-     3. (y * img->width): Salto intere righe di pixel per scendere in verticale.
-     4. (+ x): Mi sposto orizzontalmente sulla colonna corretta.
+      1. img->data: Punto di inizio della memoria mappata (inizio file).
+      2. img->offset: Salto i byte dell'header per non sovrascrivere i metadati.
+      3. (y * img->width): Salto intere righe di pixel per scendere in verticale.
+      4. (+ x): Mi sposto orizzontalmente sulla colonna corretta.
   */
+ // Sicurezza: evitiamo di uscire dal seminato (Segmentation Fault)
+    if (x < 0 || x >= img->width || y < 0 || y >= img->height) 
+    {
+        return NULL; 
+    }
   return img->data + img->offset + (y * img->width + x);
 }
 
@@ -121,7 +135,7 @@ char * pixel_at(netpbm_ptr img, int x, int y)
 int close_image(netpbm_ptr img)
 {
   /* 1. MUNMAP: Lo smontaggio del ponte.
-     Dico al sistema operativo che l'indirizzo img->data non deve più puntare al file sul disco.
+      Dico al sistema operativo che l'indirizzo img->data non deve più puntare al file sul disco.
   */
   if (img->data != MAP_FAILED)
   {
@@ -129,8 +143,8 @@ int close_image(netpbm_ptr img)
   }
 
   /* 2. FCLOSE: Chiusura del canale.
-     Chiudo definitivamente il puntatore al file (fd). 
-     Senza questo, il file potrebbe risultare "ancora in uso" dal sistema.
+      Chiudo definitivamente il puntatore al file (fd). 
+      Senza questo, il file potrebbe risultare "ancora in uso" dal sistema.
   */
   if (img->fd != NULL) 
   {
@@ -152,14 +166,13 @@ void transpose_naive(netpbm_ptr src, netpbm_ptr dst)
     for (int x = 0; x < src->width; x++) 
     {
       /* 1. LETTURA: Valore originale */
-      char pixel_value = *pixel_at(src, x, y);
+      char *s = pixel_at(src, x, y);
 
       /* 2. SCRITTURA TRASPOSTA: Scambio coordinate (x,y) -> (y,x) */
-      *pixel_at(dst, y, x) = pixel_value;
+      char *d = pixel_at(dst, y, x);
+      
+      if (s && d) *d = *s;
     }
   }
-} 
-
-
-
+}
 
