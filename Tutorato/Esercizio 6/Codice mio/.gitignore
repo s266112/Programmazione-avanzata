@@ -1,0 +1,13 @@
+# Eseguibili
+main
+
+# File oggetto
+*.o
+
+# Immagini generate (risultati)
+*-transposed.pgm
+*-edited.pgm
+
+# File di sistema
+.DS_Store
+*.gch
