@@ -1,0 +1,10 @@
+# Escludi file oggetto e binari
+*.o
+main
+
+# Escludi le immagini generate dai test
+kitty-transformed-*.pgm
+
+# Escludi eventuali file temporanei di sistema o editor
+.DS_Store
+*.swp
