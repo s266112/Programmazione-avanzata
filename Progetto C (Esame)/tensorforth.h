@@ -14,7 +14,7 @@
 // PARTE 1: TENSORI
 // =============================================================== //
 
-/* 1. STRUTTURA DEL TENSORE 
+/* 1.1 STRUTTURA DEL TENSORE 
 -> Rappresenta l'unità di dato fondamentale manipolata dall'interprete.
 -> Contiene i valori matematici, i dettagli sulla dimensionalità e i metadati necessari per la gestione efficiente della memoria.
 */
@@ -33,7 +33,7 @@ typedef struct
 
 
 
-// 2.FUNZIONI DI GESTIONE MEMORIA DEL TENSORE
+// 1.2 FUNZIONI DI GESTIONE MEMORIA DEL TENSORE
 
 /*  --- CREA_TENSORE ---
     -> Alloca dinamicamente un nuovo tensore e la relativa area di memoria per i dati.
@@ -58,11 +58,18 @@ void trattieni_tensore (Tensore* t);
 void rilascia_tensore(Tensore* t);
 
 
+/*  --- STAMPA_TENSORE ---
+    -> Stampa a schermo il contenuto del tensore.
+    -> Formatta l'output come vettore (1D) o matrice (2D) in base alle dimensioni.
+*/
+void stampa_tensore(Tensore* t);
+
+
 // =============================================================== //
 // PARTE 2: STACK
 // ============================================================== //
 
-/* 3. STRUTTURA DELLO STACK
+/* 2.1 STRUTTURA DELLO STACK
     -> L'interprete si basa su una pila LIFO (Last In, First Out).
     -> Implemento lo stack come in una lista concatenata dove gli inserimenti e le rimozioni avvengono esclusivamente dalla "cima" 
 */
@@ -81,7 +88,7 @@ typedef struct
 } Stack;
 
 
-// 4. FUNZIONI DI GESTIONE DELLO STACK
+// 2.2 FUNZIONI DI GESTIONE DELLO STACK
 
 /*  --- CREA_STACK ---
     -> Alloca e inizializza uno stack vuoto
@@ -103,6 +110,88 @@ Tensore* pop (Stack* s);
     -> Svuota completamente lo stack, rilasciando tutti i tensori rimasti e liberando la memoria dei nodi.
 */
 void libera_stack (Stack* s);
+
+
+// ========================================================= //
+// PARTE 3: MATEMATICA E OPERAZIONI
+// ======================================================== //
+
+/* 3.1 SOMMA TENSORI (+) 
+    -> Estrae due tensori dallo stack (B dalla cima, poi A).
+    -> Controlla che abbiano dimensioni compatibili.
+    -> Somma elemento per elemento e inserisce il tensore risultato nello stack.
+*/
+void op_somma(Stack* s);
+
+/* 3.2 SOTTRAZIONE TENSORI (-) 
+    -> Estrae due tensori dallo stack.
+    -> Sottrae elemento per elemento (cima - sotto) e inserisce il risultato.
+*/
+void op_sottrazione(Stack* s);
+
+/* 3.3 PRODOTTO TENSORI (*) 
+    -> Estrae due tensori dallo stack.
+    -> Moltiplica elemento per elemento e inserisce il risultato.
+*/
+void op_prodotto(Stack* s);
+
+
+
+// ===================================================== //
+// PARTE 4: COMPARAZIONI E LOGICA
+// ===================================================== //
+
+/* 4.1 MINORE (<) 
+    -> Estrae due tensori  (a dalla cima, b da sotto).
+    -> Esegue il confronto elemento per elemento (a < b).
+    -> Inserisce un nuovo tensore risultato contenente 1.0 (Vero) o 0.0 (Falso).
+*/
+void op_minore(Stack* s);
+
+/* 4.2 MAGGIORE (>) 
+    -> Estrae due tensori (a dalla cima, b da sotto).
+    -> Confronta elemento per elemento (a > b). 
+    -> Inserisce 1.0 se vero, 0.0 se falso.
+*/
+void op_maggiore(Stack* s);
+
+/* 4.3 UGUALE (=) 
+    -> Estrae due tensori (a dalla cima, b da sotto).
+    -> Confronta elemento per elemento (a == b). 
+    -> Inserisce 1.0 se vero, 0.0 se falso.
+*/
+void op_uguale(Stack* s);
+
+/* 4.4 AND LOGICO (&) 
+    -> Estrae due tensori (a dalla cima, b da sotto).
+    -> I tensori devono contenere solo 0.0 o 1.0.
+    -> Applica l'operazione logica AND elemento per elemento.
+*/
+void op_and(Stack* s);
+
+/* 4.5 OR LOGICO (|) 
+    -> Estrae due tensori (a dalla cima, b da sotto).
+    -> I tensori devono contenere solo 0.0 o 1.0.
+    -> Applica l'operazione logica OR elemento per elemento.
+*/
+void op_or(Stack* s);
+
+/* 4.6 NOT LOGICO (!) 
+    -> Estrae UN SOLO tensore dalla cima dello stack.
+    -> Il tensore deve contenere solo 0.0 o 1.0.
+    -> Applica la negazione logica (0.0 diventa 1.0, 1.0 diventa 0.0).
+*/
+void op_not(Stack* s);
+
+/* 4.7 SELEZIONE ($)
+    -> Estrae tre tensori dallo stack (m dalla cima, a dal centro, b da sotto).
+    -> Il tensore 'm' agisce da maschera booleana (0.0 o 1.0).
+    -> Se l'elemento di m e' vero (1.0), seleziona l'elemento di a, altrimenti di b.
+*/
+void op_selezione(Stack* s);
+
+
+
 #endif
 
 
