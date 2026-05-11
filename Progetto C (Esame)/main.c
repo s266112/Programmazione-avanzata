@@ -5,55 +5,47 @@
 
 int main()
 {
-    printf("--- COLLAUDO PRODOTTO DI MATRICI (@) ---\n\n");
+    printf("--- COLLAUDO FILL (f) E RIDUZIONE (S) ---\n\n");
 
     Stack* s = crea_stack();
 
     // =========================================================
-    // CREAZIONE MATRICI
+    // TEST FILL (f)
     // =========================================================
-    
-    // Matrice B (sotto): 3 righe x 2 colonne
-    int32_t forma_b[2] = {3, 2};
-    Tensore* b_mat = crea_tensore(2, forma_b);
-    b_mat->dati[0] = 7.0;  b_mat->dati[1] = 8.0;
-    b_mat->dati[2] = 9.0;  b_mat->dati[3] = 10.0;
-    b_mat->dati[4] = 11.0; b_mat->dati[5] = 12.0;
+    // 1. Forma richiesta: [2 3] (Matrice 2x3)
+    int32_t f_shape[1] = {2};
+    Tensore* s_shape = crea_tensore(1, f_shape);
+    s_shape->dati[0] = 2.0f; s_shape->dati[1] = 3.0f;
+    push(s, s_shape);
 
-    // Matrice A (cima): 2 righe x 3 colonne
-    int32_t forma_a[2] = {2, 3};
-    Tensore* a_mat = crea_tensore(2, forma_a);
-    a_mat->dati[0] = 1.0; a_mat->dati[1] = 2.0; a_mat->dati[2] = 3.0;
-    a_mat->dati[3] = 4.0; a_mat->dati[4] = 5.0; a_mat->dati[5] = 6.0;
+    // 2. Valori da ripetere: [1.0 2.0]
+    int32_t f_v[1] = {2};
+    Tensore* v = crea_tensore(1, f_v);
+    v->dati[0] = 1.0f; v->dati[1] = 2.0f;
+    push(s, v);
 
-    printf("Matrice B (sotto, 3x2):\n");
-    stampa_tensore(b_mat);
-    
-    printf("\nMatrice A (cima, 2x3):\n");
-    stampa_tensore(a_mat);
+    printf("Esecuzione Fill (f)...\n");
+    op_fill(s); 
 
-    // =========================================================
-    // ESECUZIONE
-    // =========================================================
-    
-    // Inserimento nello stack (prima B, poi A in cima)
-    push(s, b_mat);
-    push(s, a_mat);
-
-    printf("\nCalcolo in corso (A @ B)...\n\n");
-    op_prodotto_matrici(s);
+    // Duplico temporaneamente il puntatore della cima per stampare senza fare pop
+    Tensore* res_fill = s->cima->tensore; 
+    printf("Risultato Fill (Attesa matrice 2x3 con 1.0 e 2.0 ripetuti):\n");
+    stampa_tensore(res_fill);
 
     // =========================================================
-    // ESTRAZIONE E PULIZIA
+    // TEST RIDUZIONE (S)
     // =========================================================
-    
-    Tensore* ris = pop(s);
-    printf("Risultato (deve essere 2x2):\n");
-    stampa_tensore(ris);
-    rilascia_tensore(ris);
+    printf("Esecuzione Riduzione (S) sulla matrice appena generata...\n");
+    op_somma_riduzione(s);
 
+    Tensore* res_riduzione = pop(s);
+    printf("Risultato Riduzione (Somma totale attesa: 9.0):\n");
+    stampa_tensore(res_riduzione);
+
+    rilascia_tensore(res_riduzione);
     libera_stack(s);
-    printf("\n--- COLLAUDO TERMINATO ---\n");
+
+    printf("--- COLLAUDO TERMINATO ---\n");
 
     return 0;
 }

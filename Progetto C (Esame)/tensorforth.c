@@ -160,10 +160,9 @@ void stampa_tensore(Tensore* t)
     printf ("\n");           // Aggiungo uno spazio vuoto alla fine per ordine visivo
 }
 
-
+/* ---------------------------------------------------------- */
 
 // PARTE 2: STACK
-
 
 /*  --- CREA_STACK ---
     -> Alloca e inizializza uno stack vuoto
@@ -185,7 +184,6 @@ Stack* crea_stack(void)
 
     return nuovo_stack;
 }
-
 
 /*  --- PUSH ---
     -> Inserisce un tensore in cima allo stack
@@ -216,7 +214,6 @@ void push(Stack*s, Tensore* t)
     s -> cima = nuovo_nodo;
 }
 
-
 /*  --- POP ---
     -> Rimuove e restituisce il tensore in cima allo stack
     -> Funziona come la rimozione della testa in una sequenza
@@ -246,7 +243,6 @@ Tensore* pop (Stack* s)
     return tensore_estratto;
 }
 
-
 /*  --- LIBERA_STACK ---
     -> Svuota completamente lo stack, rilasciando la memoria in modo sicuro
     -> Previene i memory leak alla chiusura dell'interprete
@@ -269,7 +265,7 @@ void libera_stack(Stack* s)
     free(s);
 }
 
-
+/* ---------------------------------------------------------- */
 
 // PARTE 3: MATEMATICA E OPERAZIONI
 
@@ -279,7 +275,7 @@ void libera_stack(Stack* s)
 */
 void op_somma(Stack*s)
 {
-    // 1. Estrazione operandi. Notazione (b a -- a+b )
+    // 1. Estrazione operandi. Notazione: b a -- a+b 
     Tensore* b = pop(s);
     Tensore* a = pop(s);
 
@@ -324,7 +320,7 @@ void op_somma(Stack*s)
 */
 void op_sottrazione(Stack* s)
 {
-    // Notazione: (b a -- a-b)
+    // Notazione: b a -- a-b
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
@@ -365,7 +361,7 @@ void op_sottrazione(Stack* s)
 */
 void op_prodotto(Stack* s)
 {
-    // Notazione: (b a -- a*b)
+    // Notazione: b a -- a*b
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
@@ -399,10 +395,9 @@ void op_prodotto(Stack* s)
     rilascia_tensore(b);
 }
 
-
+/* ---------------------------------------------------------- */
 
 // PARTE 4: COMPARAZIONI, LOGICA E SELEZIONE
-
 
 /* MINORE (<) 
     -> Estrae due tensori  (a dalla cima, b da sotto).
@@ -411,7 +406,7 @@ void op_prodotto(Stack* s)
 */
 void op_minore(Stack* s)
 {
-   // Notazione: (b a -- a<b)
+   // Notazione: b a -- a<b
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
@@ -454,7 +449,7 @@ void op_minore(Stack* s)
 */
 void op_maggiore(Stack* s)
 {
-    // Notazione: (b a -- a>b)
+    // Notazione: b a -- a>b
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
@@ -497,7 +492,7 @@ void op_maggiore(Stack* s)
 */
 void op_uguale(Stack* s)
 {
-    // Notazione: (b a -- a=b)
+    // Notazione: b a -- a=b
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
@@ -540,7 +535,7 @@ void op_uguale(Stack* s)
 */
 void op_and(Stack* s)
 {
-    // Notazione: (b a -- a&b)
+    // Notazione: b a -- a&b
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
@@ -582,7 +577,7 @@ void op_and(Stack* s)
 */
 void op_or(Stack* s)
 {
-    // Notazione: (b a -- a\|b)
+    // Notazione: b a -- a\|b
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
@@ -693,6 +688,7 @@ void op_selezione(Stack* s)
     rilascia_tensore(b);
 }
 
+/* ---------------------------------------------------------- */
 
 // PARTE 5: MATEMATICA AVANZATA E STATISTICA
 
@@ -704,7 +700,7 @@ void op_selezione(Stack* s)
 */
 void op_prodotto_matrici(Stack* s)
 {
-    // 1. Notazione: (b a -- a@b)
+    // 1. Notazione: b a -- a@b
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
@@ -754,6 +750,513 @@ void op_prodotto_matrici(Stack* s)
     rilascia_tensore(a);
     rilascia_tensore(b);
 }
+
+
+/* --- PRODOTTO INTERNO (.) ---
+    -> Calcola il prodotto interno (dot product) tra due tensori identici per forma.
+    -> Esegue la moltiplicazione elemento per elemento e ne somma i risultati.
+    -> Restituisce un tensore 1D contenente un singolo valore (scalare).
+*/
+void op_prodotto_interno(Stack* s)
+{
+    // 1. Notazione: b a -- a.b
+    Tensore* a = pop(s);
+    Tensore* b = pop(s);
+
+    // 2. Verifica compatibilita' strutturale
+    if (a -> num_dim != 1 ||  b -> num_dim != 1)
+    {
+        fprintf(stderr, "Errore: Il prodotto interno (.) richiede due tensori 1D (vettori).\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Essendo 1D, basta controllarer l'unica dimensione esistente
+    if (a -> forma[0] != b -> forma[0])
+    {
+        fprintf(stderr, "Errore: Forma dei tensori incompatibile per il prodotto interno (.).\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    // 3. Calcolo della riduzione con protezione della sezione critica
+    float somma_totale = 0.0f;
+    int totale_elementi = a -> forma[0];
+
+    // Utilizzo la clausola reduction (+:somma_totale) per gestire le somme parziali in modo sicuro su più thread ed evitare race condition.
+    #pragma omp parallel for reduction (+: somma_totale)
+    for (int i = 0; i < totale_elementi; i++)
+    {
+        somma_totale += a -> dati[i] * b -> dati[i];
+    }
+
+    // 4. Allocazione del risultato: un vettore 1D di 1 solo elemento
+    int32_t forma_c[1] = {1};
+    Tensore* c = crea_tensore(1, forma_c);
+    c -> dati[0] = somma_totale;
+
+    // 5. Inserimento e pulizia
+    push(s, c);
+    rilascia_tensore(a);
+    rilascia_tensore(b);
+}
+
+
+/* --- CONVOLUZIONE 2D (c) ---
+    -> Esegue la convoluzione tra una matrice immagine 'a' e un kernel 'k'.
+    -> Richiede che entrambi i tensori siano 2D.
+    -> Applica zero-padding ai bordi per mantenere il risultato della stessa forma di 'a'.
+*/
+void op_convoluzione_2d(Stack* s)
+{
+    // 1. Notazione: a k -- conv(a, k)
+    Tensore* k = pop(s);     // Il kernel è in cima
+    Tensore* a = pop(s);    // L'immagine è sotto
+
+    // 2. Controllo che siano entrambi 2D
+    if (a -> num_dim != 2 || k -> num_dim != 2)
+    {
+        fprintf(stderr, "Errore: La convulzione 2D (c) richiede due tensori 2D.\n");
+        exit (EXIT_FAILURE);
+    }
+
+    int righe_a = a -> forma[0];
+    int col_a = a -> forma[1];
+    int righe_k = k -> forma[0];
+    int col_k = k -> forma[1];
+
+    // 3. Calcolo gli offset per centrare il kernel
+    Tensore*c = crea_tensore(2, a -> forma);
+    int offset_r = righe_k / 2;
+    int offset_c = col_k / 2;
+
+    // 4. Faccio la paralelizzazione
+    #pragma omp parallel for 
+    for (int i = 0; i < righe_a; i++)
+    {
+        for (int j = 0; j < col_a; j++)
+        {
+            float somma = 0.0f;
+
+            // Faccio scorrere il kernel
+            for (int ki = 0; ki < righe_k; ki++)
+            {
+                for (int kj = 0; kj < col_k; kj++)
+                {
+                    // Calcolo le coordinate reali sull'immagine a
+                    int riga_orig = i + ki - offset_r;
+                    int col_orig = j + kj - offset_c;
+
+                    float val_a = 0.0f;
+
+                    // Zero - padding: prendo il valore di 'a' solo se sono dentro i bordi reali
+                    if (riga_orig >= 0 && riga_orig < righe_a && col_orig >= 0 && col_orig < col_a)
+                    {
+                        val_a = a -> dati[riga_orig * col_a + col_orig];
+                    }
+
+                    float val_k = k -> dati[ki * col_k + kj];
+                    somma += val_a * val_k;
+                }
+            }
+            c -> dati[i * col_a + j] = somma;
+        }
+    }
+
+    // 5. Inserimento e pulizia
+    push(s, c);
+    rilascia_tensore(a);
+    rilascia_tensore(k);
+}
+
+
+/* ---------------------------------------------------------- */
+
+// PARTE 6: FORMA DEI TENSORI
+
+/* --- RAVEL (~) ---
+    -> Appiattisce un tensore trasformandolo in un vettore 1D.
+    -> Notazione: (a -- a')
+    -> I dati vengono ricopiati in un nuovo tensore monodimensionale.
+*/
+void op_ravel(Stack* s)
+{
+    // 1. Notazione: a -- a'
+    Tensore* a = pop(s);
+
+    // 2. Se e' gia' 1D, lo rimetto intatto e ho finito
+    if (a -> num_dim == 1)
+    {
+        push(s, a);
+        return;
+    }
+
+    // 3. Calcolo il totale degli elementi
+    int totale_elementi = 1;
+    for (int i = 0; i < a -> num_dim; i++)
+    {
+        totale_elementi *= a -> forma[i];
+    }
+
+    // 4. Modifico la forma direttamente nel tensore esistente (in-place). NON PARARELIZZO!
+    a -> num_dim = 1;
+    a -> forma[0] = totale_elementi;
+    a -> forma[1] = 0; // Pulizia per sicurezza
+
+    // 5. Inserimento il tensore originale con i metadati aggiornati
+    push(s, a);
+}
+
+
+/* --- SHAPE (#) ---
+    -> Estrae le dimensioni del tensore in cima allo stack.
+    -> Notazione: (a -- #a)
+    -> Il tensore originale viene consumato.
+    -> Restituisce un vettore 1D contenente i valori della forma (convertiti in float).
+*/
+void op_shape(Stack* s)
+{
+    // 1. Notazione: a -- #a
+    Tensore* a = pop(s);
+
+    // 2. Allocazione del risultato: un vettore 1D lungo quanto il numero di dimensioni di 'a'
+    int32_t forma_c[1] = { a -> num_dim };
+    Tensore* c = crea_tensore(1, forma_c);
+
+    // 3. Copia dei valori strutturali (convertiti in float) nel nuovo tensore
+    for (int i = 0; i < a -> num_dim; i++)
+    {
+        c -> dati[i] = (float) a -> forma[i];
+    }
+    
+    // 4. Inserimento e pulizia
+    push(s, c);
+    rilascia_tensore(a);
+}
+
+
+/* --- RESHAPE (r) ---
+    -> Modifica le dimensioni di un tensore senza alterare i dati in memoria.
+    -> Notazione: (a s -- a')
+    -> 's' è un vettore 1D contenente le nuove dimensioni.
+    -> Il numero totale di elementi deve rimanere invariato.
+*/
+void op_reshape(Stack* s)
+{
+    // 1. Notazione: a s -- a'
+    Tensore* s_shape = pop(s); // Vettore 1D con la nuova forma
+    Tensore* a = pop(s);      // Tensore da modificare
+
+    // 2. Controlli strutturali su 's_shape'
+    if (s_shape -> num_dim != 1)
+    {
+        fprintf(stderr, "Errore: Il tensore della forma per reshape (r) deve essere in 1D. \n");
+        exit(EXIT_FAILURE); 
+    }
+
+    //3. Calcolo degli elementi totaliu originali
+    int elementi_a = 1;
+    for (int i = 0; i < a -> num_dim; i++)
+    {
+        elementi_a *= a -> forma[i];
+    }
+
+    // 4. Calcolo degli elementi totali previsti dalla nuova forma
+    int elementi_nuovi = 1;
+    for (int i = 0; i < s_shape -> forma[0]; i++)
+    {
+        elementi_nuovi *= (int)s_shape -> dati[i];
+    }
+
+    // 5. Verifica compatibilità totale elementi
+    if (elementi_a != elementi_nuovi)
+    {
+        fprintf(stderr, "Errore: Numero totale di elementi incompatibile per il reshape (r).\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // 6. Modifica in-place dei metadati
+    a -> num_dim = s_shape -> forma[0];
+    for (int i = 0; i < a -> num_dim; i++)
+    {
+        a -> forma[i] = (int)s_shape -> dati[i];
+    }
+
+    // 7. Inserimento e pulizia
+    push (s, a);
+    rilascia_tensore(s_shape);
+}
+
+/* ---------------------------------------------------------- */
+
+// PARTE 7: GENERAZIONE CASUALE
+
+/* --- GENERAZIONE CASUALE (?) ---
+    -> Crea un tensore con dimensioni indicate dal vettore 's', riempito di valori casuali [0, 1].
+    -> Notazione: s -- a
+    -> Il tensore 's' indica la forma.
+    -> Il calcolo NON e' parallelizzato perche' rand() non e' thread-safe.
+*/
+void op_random(Stack* s)
+{
+    // 1. Notazione: s -- a
+    Tensore* s_shape = pop(s);
+
+    // 2. Controllo validità del tensore forma
+    if (s_shape -> num_dim != 1)
+    {
+        fprintf(stderr, "Errore: Il tensore delle forma per la generazione casuale (?) deve essere 1D.\n");
+        exit(EXIT_FAILURE);  
+    }
+    if (s_shape -> forma[0] > MAX_DIM || s_shape -> forma[0] == 0)
+    {
+        fprintf(stderr, "Errore: Numero di dimensioni non valido per la generazione casuale (Max %d).\n", MAX_DIM);
+        exit(EXIT_FAILURE);
+    }
+
+    // 3. Estrapolazione delle dimensioni del tensore 's_shape'
+    int32_t nuova_forma[MAX_DIM];
+    int num_dim_nuovo = s_shape -> forma[0];
+    int totale_elementi = 1;
+
+    for(int i = 0; i < num_dim_nuovo; i++)
+    {
+        nuova_forma[i] = (int) s_shape -> dati[i];
+        totale_elementi *= nuova_forma[i];
+    }
+
+    // 4. Creazione di un nuovo tensore
+    Tensore* a = crea_tensore(num_dim_nuovo, nuova_forma);
+
+    // 5. Popolamento con numeri casuali (SERIALI)
+    for(int i = 0; i < totale_elementi; i++)
+    {
+        a -> dati[i] = (float)rand() / (float)RAND_MAX;
+    }
+
+    // 6. Inserimento e pulizia
+    push(s, a);
+    rilascia_tensore(s_shape);
+}
+
+
+/* ---------------------------------------------------------- */
+
+// PARTE 8: OPERAZIONI ELEMENTO PER ELEMENTO, RIDUZIONE E FILLING
+
+/* --- RELU (R) ---
+    -> Sostituisce tutti gli elementi negativi con 0.0 (relu(x) = max(0, x)).
+    -> Notazione: a -- relu(a)
+    -> L'operazione viene eseguita in-place.
+*/
+void op_relu(Stack* s)
+{
+    // 1. Notazione: a -- relu(a)
+    Tensore* a = pop(s);
+
+    // 2. Calcolo totale elementi
+    int totale_elementi = 1;
+    for (int i = 0; i < a -> num_dim; i++)
+    {
+        totale_elementi *= a -> forma[i];
+    }
+
+    // 3. Paralelizzazione
+    #pragma omp parallel for
+    for (int i = 0; i < totale_elementi; i++)
+    {
+        if (a -> dati[i] < 0.0f)
+        {
+            a -> dati[i] = 0.0f;
+        }
+    }
+
+    // 4. Reinserimento del tensore
+    push (s, a);
+}
+
+/* --- MINIMO (m) ---
+    -> Ritorna elemento per elemento il minimo tra a e b.
+    -> Notazione: b a -- min(a,b)
+    -> I tensori devono avere le stesse dimensioni.
+*/
+void op_minimo(Stack* s)
+{
+    // 1. Notazione: b a -- min(a,b)
+    Tensore* a = pop(s);
+    Tensore* b = pop(s);
+
+    // 2. Controllo compatibilità
+    if (a -> num_dim != b -> num_dim)
+    {
+        fprintf(stderr, "Errore: Numero di dimensioni incompatibili per il minimo (m).\n");
+        exit (EXIT_FAILURE);
+    }
+
+    int totale_elementi = 1;
+    for (int i = 0; i < a -> num_dim; i++)
+    {
+        if (a -> forma[i] != b -> forma[i])
+        {
+            fprintf(stderr, "Errore: Forma dei tensori incompatibili per il minimo (m).\n");
+            exit(EXIT_FAILURE);
+        }
+        totale_elementi *= a -> forma[i];
+    }
+
+    // 3. Allocazione risultato
+    Tensore* c = crea_tensore (a -> num_dim, a -> forma);
+
+    // 4. Calcolo paralellizzato (assegnazione del minimo)
+    #pragma omp parallel for
+    for (int i = 0; i < totale_elementi; i++)
+    {
+        c -> dati[i] = (a -> dati[i] < b -> dati[i]) ? a -> dati[i] : b -> dati[i];
+    }
+
+    // 5. Inserimento e pulizia
+    push(s, c);
+    rilascia_tensore(a);
+    rilascia_tensore(b); 
+}
+
+/* --- MASSIMO (M) ---
+    -> Ritorna elemento per elemento il massimo tra a e b.
+    -> Notazione: b a -- max(a,b)
+*/
+void op_massimo(Stack* s)
+{
+    // Notazione: b a -- min(a,b)
+    Tensore* a = pop(s);
+    Tensore* b = pop(s);
+
+    if (a -> num_dim != b -> num_dim)
+    {
+        fprintf(stderr, "Errore: Numero di dimensioni incompatibili per il massimo (M).\n");
+        exit (EXIT_FAILURE);
+    }
+
+    int totale_elementi = 1;
+    for (int i = 0; i < a -> num_dim; i++)
+    {
+        if (a -> forma[i] != b -> forma[i])
+        {
+            fprintf(stderr, "Errore: Forma dei tensori incompatibili per il massimo (M).\n");
+            exit(EXIT_FAILURE);
+        }
+        totale_elementi *= a -> forma[i];
+    }
+
+    Tensore* c = crea_tensore (a -> num_dim, a -> forma);
+
+    #pragma omp parallel for
+    for (int i = 0; i < totale_elementi; i++)
+    {
+        c -> dati[i] = (a -> dati[i] > b -> dati[i]) ? a -> dati[i] : b -> dati[i];
+    }
+
+    push(s, c);
+    rilascia_tensore(a);
+    rilascia_tensore(b); 
+}
+
+
+/* ---------------------------------------------------------- */
+
+// PARTE 9: OPERAZIONI DI RIDUZIONE E FILLING
+
+/* --- RIDUZIONE (S) ---
+    -> Ritorna la somma di tutti i valori presenti nel tensore.
+    -> Notazione: a -- S(a)
+    -> Restituisce il risultato come un vettore 1D di un singolo elemento.
+*/
+void op_somma_riduzione(Stack* s)
+{
+    // 1. Notazione: a -- S(a)
+    Tensore* a = pop(s);
+
+    // 2. Calcolo elementi totali
+    int totale_elementi = 1;
+    for (int i = 0; i < a -> num_dim; i++)
+    {
+        totale_elementi *= a -> forma[i]; 
+    }
+
+    // 3. Somma paralelizzata con protezione della sezione critica (reduction)
+    float somma_totale = 0.0f;
+    #pragma omp parallel for reduction(+:somma_totale)
+    for (int i = 0; i < totale_elementi; i++)
+    {
+        somma_totale += a -> dati[i];
+    }
+
+    // 4. Creazione del nuovo tensore scalare (1D, 1 elemento)
+    int32_t forma_c[1] = {1};
+    Tensore* c = crea_tensore(1, forma_c);
+    c -> dati[0] = somma_totale;
+
+    // 5. Inserimento e pulizia
+    push(s, c);
+    rilascia_tensore(a);
+}
+
+
+/* --- FILL (f) ---
+    -> Crea un tensore di dimensioni indicate da 's' riempito con i valori di 'v' ripetuti.
+    -> Notazione: s v -- a
+*/
+void op_fill(Stack* s)
+{
+    // 1. Notazione: s v -- a
+    Tensore* v = pop(s);            // 'v' è in cima  
+    Tensore* s_shape = pop(s);     // 's' è sotto
+
+    // 2. Controllo validita' della forma
+    if (s_shape -> num_dim != 1)
+    {
+        fprintf(stderr, "Errore: Il tensore della forma per il fill (f) deve essere 1D.\n");
+        exit(EXIT_FAILURE);
+    }
+    if (s_shape -> forma[0] > MAX_DIM || s_shape -> forma[0] == 0)
+    {
+        fprintf(stderr, "Errore: Numero di dimensioni non valido per il fill (Max %d).\n", MAX_DIM);
+        exit(EXIT_FAILURE);
+    }
+
+    // 3. Calcolo del totale degli elementi della nuova griglia e del vettore 'v'
+    int totale_elementi_nuovi = 1;
+    int32_t nuova_forma[MAX_DIM];
+    for (int i = 0; i < s_shape -> forma[0]; i++)
+    {
+        nuova_forma[i] = (int)s_shape -> dati[i];
+        totale_elementi_nuovi *= nuova_forma[i];
+    }
+
+    int totale_elementi_v = 1;
+    for(int i = 0; i < v -> num_dim; i++)
+    {
+        totale_elementi_v *= v -> forma[i];
+    }
+
+    // 4. Creazione del nuovo tensore
+    Tensore* c = crea_tensore(s_shape -> forma[0], nuova_forma);
+
+    // 5. Riempimento parallelizzato con ripetizione modulare (operatore %)
+    #pragma omp parallel for
+    for (int i = 0; i < totale_elementi_nuovi; i++)
+    {
+        c -> dati[i] = v -> dati[i % totale_elementi_v];
+    }
+
+    // 6. Inserimento e pulizia
+    push(s, c);
+    rilascia_tensore(s_shape);
+    rilascia_tensore(v);
+}
+
+
+
+
+
+
 
 
 

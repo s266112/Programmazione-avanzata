@@ -9,7 +9,6 @@
 /*Limite massimo di dimensioni supportate (vettori 1D o matrici 2D) */
 #define MAX_DIM 2
 
-
 // PARTE 1: TENSORI
 
 /* 1.1 STRUTTURA DEL TENSORE 
@@ -43,6 +42,8 @@ void rilascia_tensore(Tensore* t);
 /*  --- STAMPA_TENSORE --- */
 void stampa_tensore(Tensore* t);
 
+
+/* ---------------------------------------------------------- */
 
 // PARTE 2: STACK
 
@@ -80,6 +81,8 @@ Tensore* pop (Stack* s);
 void libera_stack (Stack* s);
 
 
+/* ---------------------------------------------------------- */
+
 // PARTE 3: MATEMATICA E OPERAZIONI
 
 /* 3.1 SOMMA TENSORI (+) */
@@ -91,6 +94,7 @@ void op_sottrazione(Stack* s);
 /* 3.3 PRODOTTO TENSORI (*) */
 void op_prodotto(Stack* s);
 
+/* ---------------------------------------------------------- */
 
 // PARTE 4: COMPARAZIONI, LOGICA E SELEZIONE
 
@@ -115,11 +119,61 @@ void op_not(Stack* s);
 /* 4.7 SELEZIONE ($) */
 void op_selezione(Stack* s);
 
+/* ---------------------------------------------------------- */
 
 // PARTE 5: MATEMATICA AVANZATA E STATISTICA
 
 /* 5.1 PRODOTTO DI MATRICI (@) */
 void op_prodotto_matrici(Stack* s);
+
+/* 5.2 PRODOTTO INTERNO (.) */
+void op_prodotto_interno(Stack* s);
+
+/* 5.3 CONVOLUZIONE 2D (c) */
+void op_convoluzione_2d(Stack* s);
+
+/* ---------------------------------------------------------- */
+
+// PARTE 6: FORMA DEI TENSORI
+
+/* 6.1 RAVEL (~) */
+void op_ravel(Stack* s);
+
+/* 6.2 SHAPE (#) */
+void op_shape(Stack* s);
+
+/* 6.3 RESHAPE (r) */
+void op_reshape(Stack* s);
+
+/* ---------------------------------------------------------- */
+
+// PARTE 7: GENERAZIONE CASUALE
+
+/* 7.1 GENERAZIONE CASUALE (?) */
+void op_random(Stack* s);
+
+/* ---------------------------------------------------------- */
+
+// PARTE 8: OPERAZIONI ELEMENTO PER ELEMENTO, RIDUZIONE E FILLING
+
+/* 8.1 RELU (R) */
+void op_relu(Stack* s);
+
+/* 8.2 MINIMO (m) */
+void op_minimo(Stack* s);
+
+/* 8.3 MASSIMO (M) */
+void op_massimo(Stack* s);
+
+/* ---------------------------------------------------------- */
+
+// PARTE 9: OPERAZIONI DI RIDUZIONE E FILLING
+
+/* 9.1 RIDUZIONE (S) */
+void op_somma_riduzione(Stack* s);
+
+/* 9.2 FILLING (f) */
+void op_fill(Stack* s);
 
 
 #endif
