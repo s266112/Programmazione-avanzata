@@ -4,9 +4,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-// ================================================= //
+
 // PARTE 1: TENSORI
-// =================================================//
 
 /*  --- CREA_TENSORE ---
     -> Alloca dinamicamente un nuovo tensore e la relativa area di memoria per i dati;
@@ -17,7 +16,7 @@ Tensore* crea_tensore (int32_t num_dim, int32_t* forma)
     // 1. Allocazione della struttura principale del Tensore
     Tensore* nuovo_tensore = (Tensore*)malloc(sizeof(Tensore));
 
-    // Controllo di sicurezza: Se la memoria è piena, segnalo l'errore
+    // Controllo: Se la memoria è piena, segnalo l'errore
     if (nuovo_tensore == NULL)
     {
         perror ("Errore: Impossibile allocare memoria per la struttura del Tensore");
@@ -37,7 +36,7 @@ Tensore* crea_tensore (int32_t num_dim, int32_t* forma)
     // 3. Allocazione dello spazio per i numeri (Uso calloc cosi inizializzo tutto a zero)
     nuovo_tensore -> dati = (float*)calloc(totale_elementi, sizeof (float));
 
-   // Controllo di sicurezza per la seconda allocazione
+   // Controllo per la seconda allocazione
    if (nuovo_tensore -> dati == NULL)
    {
     perror ("Errore: impossibile allocare memoria per i dati del Tensore");
@@ -52,18 +51,20 @@ Tensore* crea_tensore (int32_t num_dim, int32_t* forma)
    return nuovo_tensore;
 }
 
+
 /*  --- TRATTIENI_TENSORE ---
     -> Incremento il contatore dei riferimenti del tensore
     -> Utilizzato per evitare copie fisiche dei dati durante operazioni logiche
 */
 void trattieni_tensore(Tensore* t)
 {
-    // Controllo di sicurezza: verifico che il tensore esista davvero
+    // Verifico che il tensore esista davvero
     if (t != NULL)
     {
         t -> contatore_rif++;   // Incremento il contatore dei riferimenti
     }
 }
+
 
 /* --- RILASCIA_TENSORE --- 
     -> Decrementa il contatore dei riferimenti del tensore;
@@ -71,7 +72,7 @@ void trattieni_tensore(Tensore* t)
 */
 void rilascia_tensore (Tensore* t)
 {
-    // Controllo di sicurezza: Se il tensore è NULL, ignoro l'operazione
+    // Controllo: Se il tensore è NULL, ignoro l'operazione
     if (t == NULL)
     {
         return;
@@ -79,7 +80,7 @@ void rilascia_tensore (Tensore* t)
 
     t -> contatore_rif--;   // Decremento il contatore dei riferimenti
 
-    // Se il contatore arriva a zero, nessun elemento del programma punta più a questo tensore. È sicuro distruggerlo.
+    // Se il contatore arriva a zero, nessun elemento del programma punta più a questo tensore. Posso distruggerlo.
     if (t -> contatore_rif == 0)
     {
         // 1. Devo prima liberare i dati veri e propri (l'array di float)
@@ -108,7 +109,7 @@ void rilascia_tensore (Tensore* t)
 */
 void stampa_tensore(Tensore* t)
 {
-    // 1. Controllo di sicurezza: Se il tensore o i dati non esistono, segnalo l'anomalia
+    // 1. Controllo: Se il tensore o i dati non esistono, segnalo l'anomalia
     if (t == NULL)
     {
         printf ("Errore impossibile stampare, il tensore è NULL.\n");
@@ -161,10 +162,7 @@ void stampa_tensore(Tensore* t)
 
 
 
-
-// =============================================================== //
 // PARTE 2: STACK
-// ============================================================== //
 
 
 /*  --- CREA_STACK ---
@@ -175,7 +173,7 @@ Stack* crea_stack(void)
     // 1. Chiedo al sistema operativo spazio per la struttura principale dello Stack
     Stack* nuovo_stack = (Stack*) malloc(sizeof(Stack));
 
-    // 2. Controllo di sicurezza vitale
+    // 2. Controllo 
     if (nuovo_stack == NULL)
     {
         perror ("Errore: Impossibile allocare memoria per lo Stack");
@@ -195,7 +193,7 @@ Stack* crea_stack(void)
 */
 void push(Stack*s, Tensore* t)
 {
-    // Controllo di sicurezza: se lo stack non esiste o il tensore è nullo, ignoro
+    // Controllo: Se lo stack non esiste o il tensore è nullo, ignoro
     if (s == NULL || t == NULL)
     {
         return;
@@ -218,13 +216,14 @@ void push(Stack*s, Tensore* t)
     s -> cima = nuovo_nodo;
 }
 
+
 /*  --- POP ---
     -> Rimuove e restituisce il tensore in cima allo stack
     -> Funziona come la rimozione della testa in una sequenza
 */
 Tensore* pop (Stack* s)
 {
-    // 1. Controllo di sicurezza: se lo stack è vuoto, segnalo l'errore ed esco
+    // 1. Controllo: Se lo stack è vuoto, segnalo l'errore ed esco
     if (s == NULL || s -> cima == NULL)
     {
         fprintf (stderr, "Errore: tentativo di estrarre un elemento da uno stack vuoto!\n");
@@ -247,13 +246,14 @@ Tensore* pop (Stack* s)
     return tensore_estratto;
 }
 
+
 /*  --- LIBERA_STACK ---
     -> Svuota completamente lo stack, rilasciando la memoria in modo sicuro
     -> Previene i memory leak alla chiusura dell'interprete
 */
 void libera_stack(Stack* s)
 {
-    // Controllo di sicurezza: Se lo stack non esiste, non c'è nulla da liberare
+    // Controllo: Se lo stack non esiste, non c'è nulla da liberare
     if (s == NULL)
     {
         return;
@@ -266,14 +266,12 @@ void libera_stack(Stack* s)
         rilascia_tensore(t);            // Decremento i riferimenti (e dealloco se necessario)
     }
 
-    // Ora che lo stack è completamente vuoto, posso distruggere la struttura base
     free(s);
 }
 
 
-// ========================================================================= //
+
 // PARTE 3: MATEMATICA E OPERAZIONI
-// ======================================================================== //
 
 /*  --- SOMMA TENSORI (+) ---
     -> Applica l'operatore + su due tensori.
@@ -307,7 +305,6 @@ void op_somma(Stack*s)
     Tensore* c = crea_tensore (a -> num_dim, a -> forma);
 
     // 4. Calcolo paralello
-   
     #pragma omp parallel for                    // Dice al compilatore di dividere il ciclo for su più thread
     for (int i = 0; i < totale_elementi; i++)
     {
@@ -327,11 +324,10 @@ void op_somma(Stack*s)
 */
 void op_sottrazione(Stack* s)
 {
-    // 1. Estrazione operandi. Notazione: (b a -- a-b)
+    // Notazione: (b a -- a-b)
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
-    // 2. Controllo compatibilità dimensioni e forma
     if (a -> num_dim != b -> num_dim)
     {
         fprintf(stderr, "Errore: Numero di dimensioni incompatibili per la sottrazione (-).\n");
@@ -349,17 +345,14 @@ void op_sottrazione(Stack* s)
         totale_elementi *= a -> forma[i];
     }
 
-    // 3. Allocazione del risultato
     Tensore* c = crea_tensore(a -> num_dim, a -> forma);
 
-    // 4. Calcolo parallelo
     #pragma omp parallel for
     for (int i =0; i < totale_elementi; i++)
     {
         c -> dati[i] = a -> dati[i] - b -> dati[i];
     }
 
-    // 5. Aggiornamento stack e memoria
     push (s, c);
     rilascia_tensore(a);
     rilascia_tensore(b);
@@ -372,11 +365,10 @@ void op_sottrazione(Stack* s)
 */
 void op_prodotto(Stack* s)
 {
-    // 1. Estrazione operandi Notazione: (b a -- a*b)
+    // Notazione: (b a -- a*b)
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
-    // 2. Controllo compatibilità dimensioni e forma
     if (a -> num_dim != b -> num_dim)
     {
         fprintf(stderr, "Errore: Numero di dimensioni incompatibile per il prodotto (*).\n");
@@ -394,29 +386,23 @@ void op_prodotto(Stack* s)
         totale_elementi *= a -> forma[i];
     }
 
-    // 3. Allocazione del risultato
     Tensore* c = crea_tensore(a -> num_dim, a -> forma);
 
-    // 4. Calcolo parallelo
     #pragma omp parallel for
     for (int i = 0; i < totale_elementi; i++)
     {
         c -> dati[i] = a -> dati[i] * b -> dati[i];
     }
 
-    // 5. Aggiornamento stack e memoria
     push(s, c);
     rilascia_tensore(a);
     rilascia_tensore(b);
 }
 
 
-// ===================================================== //
+
 // PARTE 4: COMPARAZIONI, LOGICA E SELEZIONE
-// ===================================================== //
 
-
-//     -------- A) COMPARAZIONI --------
 
 /* MINORE (<) 
     -> Estrae due tensori  (a dalla cima, b da sotto).
@@ -425,11 +411,10 @@ void op_prodotto(Stack* s)
 */
 void op_minore(Stack* s)
 {
-    // 1. Estrazione operandi Notazione: (b a -- a<b)
+   // Notazione: (b a -- a<b)
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
-    // 2. Controllo compatibilità dimensioni e forma
     if (a -> num_dim != b -> num_dim)
     {
         fprintf(stderr, "Errore: Numero di dimensioni incompatibile per l'operatore minore (<).\n");
@@ -447,10 +432,8 @@ void op_minore(Stack* s)
         totale_elementi *= a -> forma[i];
     }
 
-    // 3. Allocazione del risultato
     Tensore* c = crea_tensore(a -> num_dim, a -> forma);
 
-    // 4. Calcolo parallelo
     #pragma omp parallel for
     for (int i = 0; i < totale_elementi; i++)
     {
@@ -458,11 +441,11 @@ void op_minore(Stack* s)
         c -> dati[i] = (a -> dati[i] < b -> dati[i]) ? 1.0f : 0.0f;
     }
 
-    // 5. Aggiornamento stack e memoria
     push(s, c);
     rilascia_tensore(a);
     rilascia_tensore(b);
 }
+
 
 /*  MAGGIORE (>) 
     -> Estrae due tensori (a dalla cima, b da sotto).
@@ -470,13 +453,11 @@ void op_minore(Stack* s)
     -> Inserisce 1.0 se vero, 0.0 se falso.
 */
 void op_maggiore(Stack* s)
-
 {
-    // 1. Estrazione operandi Notazione: (b a -- a>b)
+    // Notazione: (b a -- a>b)
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
-    // 2. Controllo compatibilità dimensioni e forma
     if (a -> num_dim != b -> num_dim)
     {
         fprintf(stderr, "Errore: Numero di dimensioni incompatibile per l'operatore maggiore (>).\n");
@@ -494,10 +475,8 @@ void op_maggiore(Stack* s)
         totale_elementi *= a -> forma[i];
     }
 
-    // 3. Allocazione del risultato
     Tensore* c = crea_tensore(a -> num_dim, a -> forma);
 
-    // 4. Calcolo parallelo
     #pragma omp parallel for
     for (int i = 0; i < totale_elementi; i++)
     {
@@ -505,12 +484,11 @@ void op_maggiore(Stack* s)
         c -> dati[i] = (a -> dati[i] > b -> dati[i]) ? 1.0f : 0.0f;
     }
 
-    // 5. Aggiornamento stack e memoria
     push(s, c);
     rilascia_tensore(a);
     rilascia_tensore(b);
-
 }
+
 
 /*  UGUALE (=) 
     -> Estrae due tensori (a dalla cima, b da sotto).
@@ -518,13 +496,11 @@ void op_maggiore(Stack* s)
     -> Inserisce 1.0 se vero, 0.0 se falso.
 */
 void op_uguale(Stack* s)
-
 {
-    // 1. Estrazione operandi Notazione: (b a -- a=b)
+    // Notazione: (b a -- a=b)
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
-    // 2. Controllo compatibilità dimensioni e forma
     if (a -> num_dim != b -> num_dim)
     {
         fprintf(stderr, "Errore: Numero di dimensioni incompatibile per l'operatore uguale (=).\n");
@@ -542,10 +518,8 @@ void op_uguale(Stack* s)
         totale_elementi *= a -> forma[i];
     }
 
-    // 3. Allocazione del risultato
     Tensore* c = crea_tensore(a -> num_dim, a -> forma);
 
-    // 4. Calcolo parallelo
     #pragma omp parallel for
     for (int i = 0; i < totale_elementi; i++)
     {
@@ -553,15 +527,11 @@ void op_uguale(Stack* s)
         c -> dati[i] = (a -> dati[i] == b -> dati[i]) ? 1.0f : 0.0f;
     }
 
-    // 5. Aggiornamento stack e memoria
     push(s, c);
     rilascia_tensore(a);
     rilascia_tensore(b);
 }
 
-
-
-//     -------- B) LOGICA --------
 
 /*  AND LOGICO (&) 
     -> Applica l'operatore logico AND elemento per elemento.
@@ -570,11 +540,10 @@ void op_uguale(Stack* s)
 */
 void op_and(Stack* s)
 {
-    // 1. Estrazione operandi Notazione: (b a -- a&b)
+    // Notazione: (b a -- a&b)
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
-    // 2. Controllo compatibilità dimensioni e forma
     if (a -> num_dim != b -> num_dim)
     {
         fprintf(stderr, "Errore: Numero di dimensioni incompatibile per l'operatore AND (&).\n");
@@ -592,10 +561,8 @@ void op_and(Stack* s)
         totale_elementi *= a -> forma[i];
     }
 
-    // 3. Allocazione del risultato
     Tensore* c = crea_tensore(a -> num_dim, a -> forma);
 
-    // 4. Calcolo parallelo
     #pragma omp parallel for
     for (int i = 0; i < totale_elementi; i++)
     {
@@ -603,7 +570,6 @@ void op_and(Stack* s)
         c -> dati[i] = (a -> dati[i] != 0.0f && b -> dati[i] != 0.0f) ? 1.0f : 0.0f;
     }
 
-    // 5. Aggiornamento stack e memoria
     push(s, c);
     rilascia_tensore(a);
     rilascia_tensore(b);
@@ -616,11 +582,10 @@ void op_and(Stack* s)
 */
 void op_or(Stack* s)
 {
-    // 1. Estrazione operandi. Notazione: (b a -- a\|b)
+    // Notazione: (b a -- a\|b)
     Tensore* a = pop(s);
     Tensore* b = pop(s);
 
-    // 2. Controllo compatibilità dimensioni e forma
     if (a -> num_dim != b -> num_dim)
     {
         fprintf(stderr, "Errore: Numero di dimensioni incompatibili per l'operatore OR (|).\n");
@@ -638,10 +603,8 @@ void op_or(Stack* s)
         totale_elementi *= a -> forma[i];
     }
 
-    // 3. Allocazione del risultato
     Tensore* c = crea_tensore(a -> num_dim, a -> forma);
 
-    // 4. Calcolo parallelo
     #pragma omp parallel for
     for (int i = 0; i < totale_elementi; i++)
     {
@@ -649,11 +612,11 @@ void op_or(Stack* s)
         c -> dati[i] = (a -> dati[i] != 0.0f || b -> dati[i] != 0.0f) ? 1.0f : 0.0f;
     }
 
-    // 5. Aggiornamento stack e memoria
     push(s, c);
     rilascia_tensore(a);
     rilascia_tensore(b);
 }
+
 
 /*  NOT LOGICO (!) 
     -> Operazione unaria: Estrae un singolo tensore.
@@ -661,7 +624,7 @@ void op_or(Stack* s)
 */
 void op_not(Stack* s)
 {
-    // 1. Estrazione di UN SOLO operando. Notazione: a -- !a
+    // Notazione: a -- !a
     Tensore* a = pop(s);
     
     int totale_elementi = 1;
@@ -670,10 +633,8 @@ void op_not(Stack* s)
         totale_elementi *= a -> forma[i];
     }
 
-    // 2. Allocazione del risultato
     Tensore* c = crea_tensore(a -> num_dim, a -> forma);
 
-    // 4. Calcolo parallelo
     #pragma omp parallel for
     for (int i = 0; i < totale_elementi; i++)
     {
@@ -681,13 +642,10 @@ void op_not(Stack* s)
         c -> dati[i] = (a -> dati[i] == 0.0f) ? 1.0f : 0.0f;
     }
 
-    // 5. Aggiornamento stack e memoria
     push(s, c);
     rilascia_tensore(a);
 }
 
-
-//     -------- C) SELEZIONE --------
 
 /*   OPERATORE DI SELEZIONE ($) 
     -> Estrae tre tensori e agisce come un operatore ternario o "multiplexer" (b a m -- m?a:b).
@@ -696,12 +654,11 @@ void op_not(Stack* s)
 */
 void op_selezione(Stack* s)
 {
-    // 1. Estrazione di tre operandi. Notazione: b a m -- m?a:b
+    // Notazione: b a m -- m?a:b
     Tensore* m = pop(s);
     Tensore* a = pop(s);
     Tensore* b = pop(s);
     
-    // 2. Controllo incrociato sul numero di dimensioni 
     if (a -> num_dim != b -> num_dim || a -> num_dim != m -> num_dim)
     {
         fprintf(stderr, "Errore: Numero di dimensioni incompatibili per l'operatore di selezione ($).\n");
@@ -720,10 +677,9 @@ void op_selezione(Stack* s)
         totale_elementi *= a -> forma[i];
     }
 
-    // 3. Allocazione del risultato
+    // Allocazione del risultato
     Tensore* c = crea_tensore(a -> num_dim, a -> forma);
 
-    // 4. Calcolo parallelo
     #pragma omp parallel for
     for (int i = 0; i < totale_elementi; i++)
     {
@@ -731,9 +687,70 @@ void op_selezione(Stack* s)
         c -> dati[i] = (m -> dati[i] != 0.0f) ? a -> dati[i] : b -> dati[i];
     }
 
-    // 5. Aggiornamento stack e memoria
     push(s, c);
     rilascia_tensore(m);
+    rilascia_tensore(a);
+    rilascia_tensore(b);
+}
+
+
+// PARTE 5: MATEMATICA AVANZATA E STATISTICA
+
+/* --- PRODOTTO DI MATRICI (@) ---
+    -> Esegue la moltiplicazione matriciale riga per colonna (A @ B).
+    -> 'a' e' l'elemento in cima, 'b' e' il successivo.
+    -> Entrambi i tensori devono essere rigorosamente 2D.
+    -> Le dimensioni interne (colonne di A e righe di B) devono coincidere.
+*/
+void op_prodotto_matrici(Stack* s)
+{
+    // 1. Notazione: (b a -- a@b)
+    Tensore* a = pop(s);
+    Tensore* b = pop(s);
+
+    // 2. Controllo: Devono essere entrambe matrici
+    if (a -> num_dim != 2 || b -> num_dim != 2)
+    {
+        fprintf(stderr, "Errore: Il prodotto di matrici (@) richiede due tensori 2D.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // 3. Controllo algebra lineare: Colonne di A == righe di B. (forma[0] = righe, forma[1] = colonne)
+    if (a -> forma[1] != b -> forma[0])
+    {
+        fprintf(stderr, "Errore: Dimensioni interne incompatibili per il prodotto di matrici (@).\n");
+        exit (EXIT_FAILURE);
+    }
+
+    // 4. Allocazione del tensore risultato C (righe di A x colonne di B)
+    int32_t forma_c[2] = {a -> forma [0], b -> forma[1]};
+    Tensore*c = crea_tensore(2, forma_c);
+
+    // Salvo le dimensioni in variabli per comodità
+    int righe_a = a -> forma[0];
+    int col_a_righe_b = a -> forma[1];
+    int col_b = b -> forma[1];
+
+    // Faccio il calcolo (pararelizzo sulle righe C)
+    #pragma omp parallel for
+    for (int i = 0; i < righe_a; i++)
+    {
+        for (int j = 0; j < col_b; j++)
+        {
+            float somma = 0.0f;
+            for (int k = 0; k < col_a_righe_b; k++)
+            {
+                // In un array 1D che simula un 2D, l'indice si calcola come: (riga * tot_colonne) + colonna
+                float val_a = a -> dati[i * col_a_righe_b + k];
+                float val_b = b -> dati[k * col_b + j];
+                somma += val_a * val_b;
+            }
+            c -> dati [i * col_b + j] = somma; 
+        }
+    }
+
+    // 5. Inserimento e pulizia
+    push(s, c);
     rilascia_tensore(a);
     rilascia_tensore(b);
 }
