@@ -16,4 +16,10 @@ $(TARGET): main.c tensorforth.c tensorforth.h
 
 # Regola: Pulisco la cartella
 clean:
-		rm -f $(TARGET)
+	rm -f $(TARGET) *.o
+	@echo "Pulizia eseguibile e oggetti completata."
+	@# Rimuove solo i file generati, senza toccare gli originali
+	rm -f examples/tensor.bin
+	rm -f examples/*-blurred.pgm
+	rm -f examples/*-bw.pgm
+	rm -f examples/*-edges.pgm

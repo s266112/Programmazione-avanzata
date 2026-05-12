@@ -1,0 +1,21 @@
+# --- Eseguibili e file oggetto ---
+tensorforth
+*.o
+
+# --- File generati dagli esempi (Output) ---
+# Escludiamo i risultati dei test per mantenere il repo pulito
+examples/*.bin
+examples/*-blurred.pgm
+examples/*-bw.pgm
+examples/*-edges.pgm
+
+# --- File di sistema e configurazioni locali ---
+.vscode/
+.DS_Store
+desktop.ini
+thumbs.db
+
+# --- IMPORTANTE: Non ignorare i file necessari ---
+# Ci assicuriamo che i file originali non vengano mai ignorati
+!examples/cray-2.pgm
+!examples/*.tensorforth
