@@ -40,10 +40,10 @@ int main(int argc, char *argv[])
     char token[256];
     float temp_array[MAX_ARRAY_SIZE];
     int temp_count = 0;
-    int in_array = 0;           // Flag: attivo se stiamo leggendo i numeri dentro le parentesi [ ]
+    int in_array = 0;           // Flag: Attivo se sto leggendo i numeri dentro le parentesi [ ]
     char temp_filename[256] = "";
 
-    // 5. Ciclo principale di lettura: analizza ogni parola separata da spazi o a capo
+    // 5. Ciclo principale di lettura: Analizza ogni parola separata da spazi o a capo
     while (fscanf(input_file, "%255s", token) == 1)
     {
         // Rilevamento inizio tensore '['
