@@ -7,12 +7,12 @@ CFLAGS = -Wall -Wextra -fopenmp
 # Nome dell'eseguibile
 TARGET = tensorforth
 
-#Regola principale: quando scrivo 'make' compila tutto
+# Regola principale: quando scrivo 'make' compila tutto
 all: $(TARGET)
 
 # Costruisco l'eseguibile
 $(TARGET): main.c tensorforth.c tensorforth.h
-		$(CC) $(CFLAGS) main.c tensorforth.c -o $(TARGET)
+	$(CC) $(CFLAGS) main.c tensorforth.c -o $(TARGET)
 
 # Regola: Pulisco la cartella
 clean:
@@ -23,3 +23,5 @@ clean:
 	rm -f examples/*-blurred.pgm
 	rm -f examples/*-bw.pgm
 	rm -f examples/*-edges.pgm
+
+.PHONY: all clean
