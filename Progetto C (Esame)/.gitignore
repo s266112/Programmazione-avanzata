@@ -8,6 +8,7 @@ examples/*.bin
 examples/*-blurred.pgm
 examples/*-bw.pgm
 examples/*-edges.pgm
+examples/gol_*.pgm
 
 # --- File di sistema e configurazioni locali ---
 .vscode/
