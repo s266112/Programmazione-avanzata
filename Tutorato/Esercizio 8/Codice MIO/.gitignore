@@ -1,14 +1,34 @@
+# =============================================================================
+# .GITIGNORE - Pulizia del Repository
+# Escludo i file temporanei e di sistema per mantenere il progetto pulito.
+# =============================================================================
+
 # --- PYTHON ---
-# Cartelle di cache che Python crea per velocizzare l'esecuzione
+# Nascondo le cartelle di cache che Python crea per velocizzare l'esecuzione 
 __pycache__/
 *.py[cod]
+*$py.class
 
 # --- C & COMPILAZIONE ---
-# File oggetto generati durante la compilazione (Exercise Part)
+# Escludo i file oggetto generati durante la compilazione 
 *.o
-# La libreria condivisa che verrà creata dal Makefile
+
+# Escludo la libreria condivisa (deve essere generata localmente con make) 
 libtree.so
 
-# --- SISTEMA ---
-# File nascosti di macOS
+# --- FILE DI SISTEMA & DESKTOP ---
+# Nascondo i file invisibili di macOS 
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Nascondo i file temporanei di Windows (se presenti)
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- EDITOR & IDE ---
+# Escludo le cartelle di configurazione di VS Code o altri editor
+.vscode/
+.idea/
+*.swp
