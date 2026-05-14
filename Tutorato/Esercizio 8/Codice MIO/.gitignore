@@ -1,0 +1,14 @@
+# --- PYTHON ---
+# Cartelle di cache che Python crea per velocizzare l'esecuzione
+__pycache__/
+*.py[cod]
+
+# --- C & COMPILAZIONE ---
+# File oggetto generati durante la compilazione (Exercise Part)
+*.o
+# La libreria condivisa che verrà creata dal Makefile
+libtree.so
+
+# --- SISTEMA ---
+# File nascosti di macOS
+.DS_Store
