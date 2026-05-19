@@ -1,4 +1,4 @@
-# Esercitazione 10: Polinomi ed Espressioni in Python
+# Esercitazione 9: Polinomi ed Espressioni in Python
 
 ## 🚀 OBIETTIVO DEL PROGETTO
 Implementare una classe `Polinomio` per la gestione di polinomi in una variabile e un sistema per costruire e valutare espressioni in notazione polacca inversa (RPN) tramite una gerarchia di classi.
