@@ -1,0 +1,85 @@
+# ============================================================================
+# .gitignore per progetti Python
+# ============================================================================
+
+# Bytecode compilato (le "schifezze" che Git non deve vedere)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ambiente virtuale (locale, non serve su repo)
+venv/
+.env/
+.venv/
+ENV/
+env/
+
+# File di configurazione IDE (VS Code, PyCharm, ecc.)
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ============================================================================
+# FILE DI SISTEMA (desktop, thumbnails, ecc.)
+# ============================================================================
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.AppleDesktop
+
+# Windows
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Linux / Desktop environment
+*.desktop
+.directory
+*.orig
+*.bak
+*.tmp
+
+# File temporanei del sistema operativo
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.bak
+*.tmp
+
+# Log e file di output
+*.log
+*.out
+*.err
+
+# File di test e copertura
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# File di distribuzione (se fai pacchetti)
+*.egg-info/
+dist/
+build/
+
+# Backup personali (come "Parte A - polynomial.py.bak")
+*.bak
+*~
+*.orig
+
+# File specifici del progetto (se generati durante l'esecuzione)
+test_output/
+*.dat

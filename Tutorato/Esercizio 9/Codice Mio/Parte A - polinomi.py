@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 
-class Polynomial:
+class Polinomio:
 
     # =========================
     # COSTRUTTORE
@@ -88,103 +88,103 @@ class Polynomial:
     # ========================================================================
 
 # -- Somma --    
-    def __add__(self, other):       
+    def __add__(self, altro):       
         """
-        - ADD: Restituisce un NUOVO polinomio (self + other).
+        - ADD: Restituisce un NUOVO polinomio (self + altro).
         
-        # Cosa può essere other? 
-        - Un altro Polynomial
+        # Cosa può essere altro? 
+        - Un altro Polinomio
         - Un numero (int/float) → viene trattato come costante (grado 0)
         
         # Perché restituisco un nuovo oggetto?  
         - Lo chiede la consegna
         - Non modifico self (immutabilità).
         """
-        # 1. CONVERSIONE: Se other è un numero, diventa Polynomial costante
-        if isinstance(other, (int, float)):
-            other = Polynomial({0: other})
+        # 1. CONVERSIONE: Se altro è un numero, diventa Polinomio costante
+        if isinstance(altro, (int, float)):
+            altro = Polinomio({0: altro})
         
-        # 2. CONTROLLO TIPO: Se non è Polynomial, errore
-        if not isinstance(other, Polynomial):
-            raise TypeError(f"Impossibile sommare Polynomial con {type(other)}")
+        # 2. CONTROLLO TIPO: Se non è Polinomio, errore
+        if not isinstance(altro, Polinomio):
+            raise TypeError(f"Impossibile sommare Polinomio con {type(altro)}")
         
         # 3. UNIONE DEI GRADI: Prendo tutti i gradi presenti in almeno un polinomio
-        tutti_gradi = set(self._coeffs.keys()) | set(other._coeffs.keys())
+        tutti_gradi = set(self._coeffs.keys()) | set(altro._coeffs.keys())
         
         # 4. COSTRUISCO IL DIZIONARIO DEI COEFFICIENTI SOMMA
         nuovi_coeffs = {}
         for grado in tutti_gradi:
-            somma = self[grado] + other[grado]  # self[grado] usa __getitem__
+            somma = self[grado] + altro[grado]  # self[grado] usa __getitem__
             if somma != 0:                      # Evito di salvare coefficienti nulli
                 nuovi_coeffs[grado] = somma
         
         # 5. RESTITUISCO UN NUOVO POLINOMIO
-        return Polynomial(nuovi_coeffs)
+        return Polinomio(nuovi_coeffs)
 
 
 
 # -- Sottrazione --
-    def __sub__(self, other):
+    def __sub__(self, altro):
         """
-        -SUB: Restituisce un NUOVO polinomio (self - other).
+        -SUB: Restituisce un NUOVO polinomio (self - altro).
         
-        # Strategia: self - other = self + (-other)
+        # Strategia: self - altro = self + (-altro)
         - Evito di duplicare la logica di addizione.
-        - Basta creare un polinomio "negato" di other e sommarlo.
+        - Basta creare un polinomio "negato" di altro e sommarlo.
         
-        # Cosa può essere other?
-        - Un altro Polynomial
+        # Cosa può essere altro?
+        - Un altro Polinomio
         - Un numero (int/float) → trattato come costante
         """
-        # 1. CONVERSIONE: Se other è un numero, diventa Polynomial costante
-        if isinstance(other, (int, float)):
-            other = Polynomial({0: other})
+        # 1. CONVERSIONE: Se altro è un numero, diventa Polinomio costante
+        if isinstance(altro, (int, float)):
+            altro = Polinomio({0: altro})
         
         # 2. CONTROLLO TIPO
-        if not isinstance(other, Polynomial):
-            raise TypeError(f"Impossibile sottrarre {type(other)} da Polynomial")
+        if not isinstance(altro, Polinomio):
+            raise TypeError(f"Impossibile sottrarre {type(altro)} da Polinomio")
         
         # 3. CREO IL POLINOMIO NEGATO: Moltiplico tutti i coefficienti per -1
         coeffs_negati = {}
-        for grado, coeff in other._coeffs.items():
+        for grado, coeff in altro._coeffs.items():
             if -coeff != 0:                         # Evito di salvare zeri
                 coeffs_negati[grado] = -coeff
         
-        # 4. SOMMA: Self + (-other) usando __add__ già implementato
-        return self + Polynomial(coeffs_negati)
+        # 4. SOMMA: Self + (-altro) usando __add__ già implementato
+        return self + Polinomio(coeffs_negati)
     
 
 
 # -- Moltiplicazione --
-    def __mul__(self, other):
+    def __mul__(self, altro):
         """
-        - MUL: Restituisce un NUOVO polinomio (self * other).
+        - MUL: Restituisce un NUOVO polinomio (self * altro).
         
         # Algoritmo: Prodotto di due polinomi = somma di tutti i prodotti 
-                   tra ogni termine di self e ogni termine di other.
+                   tra ogni termine di self e ogni termine di altro.
         
         # Regola: (coeff_a * x^grado_a) * (coeff_b * x^grado_b) = 
                   (coeff_a * coeff_b) * x^(grado_a + grado_b)
         
-       # Cosa può essere other?
-        - Un altro Polynomial
+       # Cosa può essere altro?
+        - Un altro Polinomio
         - Un numero (int/float) → prodotto scalare
         """
-        # 1. CONVERSIONE: Se other è un numero, lo trasformo in Polynomial costante
-        if isinstance(other, (int, float)):
-            other = Polynomial({0: other})
+        # 1. CONVERSIONE: Se altro è un numero, lo trasformo in Polinomio costante
+        if isinstance(altro, (int, float)):
+            altro = Polinomio({0: altro})
         
         # 2. CONTROLLO TIPO
-        if not isinstance(other, Polynomial):
-            raise TypeError(f"Impossibile moltiplicare Polynomial con {type(other)}")
+        if not isinstance(altro, Polinomio):
+            raise TypeError(f"Impossibile moltiplicare Polinomio con {type(altro)}")
         
         # 3. DIZIONARIO PROVVISORIO PER I RISULTATI (uso dict normale, non defaultdict)
         #    Perché? Perché devo sommare più contributi allo stesso grado.
         risultati = {}
         
-        # 4. DOPPIO CICLO: Per ogni termine di self e ogni termine di other
+        # 4. DOPPIO CICLO: Per ogni termine di self e ogni termine di altro
         for grado_a, coeff_a in self._coeffs.items():
-            for grado_b, coeff_b in other._coeffs.items():
+            for grado_b, coeff_b in altro._coeffs.items():
 
                 # 4.1 Calcolo grado e coefficiente del prodotto
                 grado_prodotto = grado_a + grado_b
@@ -203,7 +203,7 @@ class Polynomial:
                 coeffs_finali[grado] = coeff
         
         # 6. RESTITUISCO UN NUOVO POLINOMIO
-        return Polynomial(coeffs_finali)
+        return Polinomio(coeffs_finali)
 
        
 
@@ -232,7 +232,7 @@ class Polynomial:
         
         # 2. CASO n == 0: Restituisco il polinomio costante 1
         if n == 0:
-            return Polynomial({0: 1})
+            return Polinomio({0: 1})
         
         # 3. CASO n < 0: Non supportato (darebbe polinomio con termini negativi)
         if n < 0:
@@ -248,9 +248,9 @@ class Polynomial:
     
    
 # -- Derivata del polinomio -- 
-    def derivative(self):
+    def derivata(self):
         """
-        - DERIVATIVE: Restituisce un NUOVO polinomio che è la derivata di self.
+        - DERIVATA: Restituisce un NUOVO polinomio che è la derivata di self.
         
         # Regola di derivazione: d/dx [c * x^k] = c * k * x^(k-1)
         
@@ -258,7 +258,7 @@ class Polynomial:
         - La derivata di una costante è 0 → il termine scompare.
         
         # Perché restituisco un nuovo oggetto?
-        - La consegna richiede: "ritornare un oggetto di tipo Polynomial".
+        - La consegna richiede: "ritornare un oggetto di tipo Polinomio".
         - Non modifico self (immutabilità).
         """
         # 1. DIZIONARIO PER I COEFFICIENTI DELLA DERIVATA
@@ -281,7 +281,7 @@ class Polynomial:
                 coeffs_derivata[nuovo_grado] = nuovo_coeff
         
         # 3. RESTITUISCO UN NUOVO POLINOMIO
-        return Polynomial(coeffs_derivata)
+        return Polinomio(coeffs_derivata)
     
 
     # ========================================================================
@@ -329,7 +329,7 @@ class Polynomial:
 
 
 # ==============================================================
-# FUNZIONE NEWTON-RAPHSON (fuori dalla classe Polynomial)
+# FUNZIONE NEWTON-RAPHSON (fuori dalla classe Polinomio)
 # ==============================================================
 
 def newton_raphson(p, x, n_iter=20):
@@ -339,7 +339,7 @@ def newton_raphson(p, x, n_iter=20):
     # Formula iterativa: x_{n+1} = x_n - p(x_n) / p'(x_n)
     
     # Parametri:
-    - p: un oggetto Polynomial
+    - p: un oggetto Polinomio
     - x: stima iniziale (float o int)
     - n_iter: numero di iterazioni (default 20)
     
@@ -349,13 +349,13 @@ def newton_raphson(p, x, n_iter=20):
     - La consegna richiede un numero fisso di iterazioni (n_iter).
     - Semplice e prevedibile per il test.
     
-    # Cosa uso di Polynomial?
+    # Cosa uso di Polinomio?
     - p(x) → __call__
-    - p.derivative() → metodo derivative
-    - p.derivative()(x) → __call__ sulla derivata
+    - p.derivata() → metodo derivata
+    - p.derivata()(x) → __call__ sulla derivata
     """
     # 1. CALCOLO UNA VOLTA LA DERIVATA (non serve ricalcolarla ogni iterazione)
-    derivata = p.derivative()
+    derivata = p.derivata()
     
     # 2. ITERO PER n_iter VOLTE
     for _ in range(n_iter):
@@ -387,8 +387,8 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
     # 1. CREAZIONE DEI POLINOMI
     # -------------------------------------------------------------------------
-    p1 = Polynomial({4: 2, 3: 5, 1: 6, 0: -2})
-    p2 = Polynomial({3: 1, 2: 0.5, 1: -1, 0: 3})
+    p1 = Polinomio({4: 2, 3: 5, 1: 6, 0: -2})
+    p2 = Polinomio({3: 1, 2: 0.5, 1: -1, 0: 3})
     
     print("\n[1] POLINOMI DI PARTENZA")
     print(f"    p1(x) = {p1}")
@@ -426,7 +426,7 @@ if __name__ == "__main__":
     # 6. DERIVATA
     # -------------------------------------------------------------------------
     print("\n[6] DERIVATA di p1")
-    print(f"    p1'(x) = {p1.derivative()}")
+    print(f"    p1'(x) = {p1.derivata()}")
     print(f"    Verifica: 2x^4 → 8x^3, 5x^3 → 15x^2, 6x^1 → 6, -2 → 0")
     
     # -------------------------------------------------------------------------
