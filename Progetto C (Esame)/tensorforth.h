@@ -16,11 +16,14 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-// Struttura richiesta per l'intestazione dei file binari
+// Struttura richiesta per l'intestazione dei file binari.
+// Deve occupare esattamente 64 byte nel file.
 struct on_disk_tensor {
     int32_t shape[MAX_DIM];
     int32_t ndim;
-    off_t data_offset;
+    int32_t reserved0;      // allinea data_offset a 8 byte
+    int64_t data_offset;
+    char reserved[40];      // padding per arrivare a 64 byte totali
 };
 
 
@@ -41,6 +44,7 @@ typedef struct
     int32_t contatore_rif;      // Contatore dei riferimenti per ottimizzare le duplicazioni
     int mmap_attivo;            // Flag: 1 se il file è mappato in sola lettura (mmap), 0 altrimenti
     size_t mmap_size;           // Dimensione totale della mappatura per munmap
+    void* mmap_ptr;             // Puntatore all'inizio della mappatura su disco
 } Tensore;
 
 

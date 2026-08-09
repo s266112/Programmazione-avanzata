@@ -4,10 +4,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 #include "tensorforth.h"
 
 // Dimensione massima di sicurezza per gli array letti tra parentesi quadre
 #define MAX_ARRAY_SIZE 10000 
+
+static int is_float_token(const char* token)
+{
+    if (token == NULL || token[0] == '\0')
+    {
+        return 0;
+    }
+
+    char* endptr;
+    errno = 0;
+    strtod(token, &endptr);
+    return errno == 0 && *endptr == '\0' && endptr != token;
+}
 
 /* --- PARSER TENSORFORTH --- 
    -> Legge un file sorgente o l'input da terminale;
@@ -43,16 +57,18 @@ int main(int argc, char *argv[])
     int in_array = 0;           // Flag: Attivo se sto leggendo i numeri dentro le parentesi [ ]
     char temp_filename[256] = "";
 
-    // 5. Ciclo principale di lettura: Analizza ogni parola separata da spazi o a capo
+    // 5. Ciclo principale di lettura: Analizza ogni parola separata da spazi o a capo.
+    //    Il parser è uno stato semplice: legge token, costruisce array, memorizza filename
+    //    e applica operatori stack-based uno per uno.
     while (fscanf(input_file, "%255s", token) == 1)
     {
-        // Rilevamento inizio tensore '['
+        // Rilevamento inizio tensore '['. Da questo punto, i numeri successivi vengono raccolti in temp_array.
         if (strcmp(token, "[") == 0) 
         {
             in_array = 1;
             temp_count = 0;
         }
-        // Rilevamento fine tensore ']'
+        // Rilevamento fine tensore ']'. Quando chiudo l'array, lo converto in un tensore 1D e lo pusho nello stack.
         else if (strcmp(token, "]") == 0) 
         {
             if (in_array) 
@@ -68,26 +84,37 @@ int main(int argc, char *argv[])
                 in_array = 0;
             }
         }
-        // Gestione delle stringhe (Nomi dei file tra doppi apici)
+        // Gestione delle stringhe (nomi dei file tra doppi apici).
+        // Il token viene memorizzato in temp_filename e utilizzato dal prossimo operatore di I/O.
         else if (token[0] == '"') 
         {
-            // Estraggo il nome del file eliminando i doppi apici
             size_t len = strlen(token);
-            if (len > 2)
+            if (len > 2 && token[len - 1] == '"')
             {
                 strncpy(temp_filename, token + 1, len - 2);
                 temp_filename[len - 2] = '\0';
             }
-        }
-        // Elaborazione dei numeri (dentro un blocco [ ])
-        else if ((token[0] >= '0' && token[0] <= '9') || (token[0] == '-' && token[1] >= '0')) 
-        {
-            if (in_array && temp_count < MAX_ARRAY_SIZE) 
+            else
             {
-                temp_array[temp_count++] = (float)atof(token);
+                fprintf(stderr, "Errore: stringa filename non valida '%s'.\n", token);
+                return EXIT_FAILURE;
             }
         }
-        // Identificazione ed esecuzione degli operatori
+        // Elaborazione dei numeri (dentro un blocco [ ])
+        else if (in_array && is_float_token(token))
+        {
+            if (temp_count < MAX_ARRAY_SIZE)
+            {
+                temp_array[temp_count++] = (float)strtod(token, NULL);
+            }
+            else
+            {
+                fprintf(stderr, "Errore: dimensione dell'array supera il limite %d.\n", MAX_ARRAY_SIZE);
+                return EXIT_FAILURE;
+            }
+        }
+        // Identificazione ed esecuzione degli operatori.
+        // Ogni singolo token di lunghezza 1 è trattato come un operatore Forth-style.
         else if (strlen(token) == 1) 
         {
             char op = token[0];
@@ -111,7 +138,8 @@ int main(int argc, char *argv[])
                 case '@': op_prodotto_matrici(stack); break;
                 case '.': op_prodotto_interno(stack); break;
                 case 'c': op_convoluzione_2d(stack); break;
-                case '~': op_ravel(stack); break;
+                case '~':
+                case '_': op_ravel(stack); break;
                 case '#': op_shape(stack); break;
                 case 'r': op_reshape(stack); break;
                 case '?': op_random(stack); break;
@@ -129,16 +157,72 @@ int main(int argc, char *argv[])
                 case 'o': op_over(stack); break;
                 
                 // Input / Output
-                case '(': op_leggi_pgm(stack, temp_filename); break;
-                case ')': op_scrivi_pgm(stack, temp_filename); break;
-                case '{': op_leggi_binario(stack, temp_filename); break;
-                case '}': op_scrivi_binario(stack, temp_filename); break;
+                case '(': 
+                    if (temp_filename[0] == '\0')
+                    {
+                        fprintf(stderr, "Errore: filename mancante prima di '('.\n");
+                        return EXIT_FAILURE;
+                    }
+                    op_leggi_pgm(stack, temp_filename);
+                    temp_filename[0] = '\0';
+                    break;
+                case ')': 
+                    if (temp_filename[0] == '\0')
+                    {
+                        fprintf(stderr, "Errore: filename mancante prima di ')'.\n");
+                        return EXIT_FAILURE;
+                    }
+                    op_scrivi_pgm(stack, temp_filename);
+                    temp_filename[0] = '\0';
+                    break;
+                case '{': 
+                    if (temp_filename[0] == '\0')
+                    {
+                        fprintf(stderr, "Errore: filename mancante prima di '{'.\n");
+                        return EXIT_FAILURE;
+                    }
+                    op_leggi_binario(stack, temp_filename);
+                    temp_filename[0] = '\0';
+                    break;
+                case '}': 
+                    if (temp_filename[0] == '\0')
+                    {
+                        fprintf(stderr, "Errore: filename mancante prima di '}'.\n");
+                        return EXIT_FAILURE;
+                    }
+                    op_scrivi_binario(stack, temp_filename);
+                    temp_filename[0] = '\0';
+                    break;
                 
                 default:
                     fprintf(stderr, "Errore: Operatore '%c' non riconosciuto.\n", op);
-                    break;
+                    return EXIT_FAILURE;
             }
         }
+        else
+        {
+            if (in_array)
+            {
+                fprintf(stderr, "Errore: token non valido in array '%s'.\n", token);
+                return EXIT_FAILURE;
+            }
+            else
+            {
+                fprintf(stderr, "Errore: token non riconosciuto '%s'.\n", token);
+                return EXIT_FAILURE;
+            }
+        }
+    }
+
+    if (in_array)
+    {
+        fprintf(stderr, "Errore: array non chiuso. Mancano ] .\n");
+        if (input_file != stdin)
+        {
+            fclose(input_file);
+        }
+        libera_stack(stack);
+        return EXIT_FAILURE;
     }
 
     // 6. Chiusura delle risorse e pulizia finale della memoria

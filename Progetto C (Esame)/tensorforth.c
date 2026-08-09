@@ -1,9 +1,104 @@
 // Alessio Matessi  S266112
 
+// TensorForth: motore dei tensori e delle operazioni supportate.
+// Questa implementazione gestisce:
+//  - la creazione, la copia e la distruzione dei tensori
+//  - le operazioni aritmetiche e logiche su tensori 1D/2D
+//  - reshape, ravel, convoluzione e prodotto matriciale
+//  - I/O PGM e I/O binario via mmap
+
 #include "tensorforth.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
+
+static int read_pgm_token(FILE* file, char* buffer, size_t size)
+{
+    int ch;
+
+    while (1)
+    {
+        ch = fgetc(file);
+        if (ch == EOF)
+        {
+            return 0;
+        }
+        if (ch == '#')
+        {
+            while ((ch = fgetc(file)) != EOF && ch != '\n');
+            continue;
+        }
+        if (!isspace(ch))
+        {
+            break;
+        }
+    }
+
+    size_t idx = 0;
+    do
+    {
+        if (idx + 1 < size)
+        {
+            buffer[idx++] = (char)ch;
+        }
+        ch = fgetc(file);
+    } while (ch != EOF && !isspace(ch));
+
+    buffer[idx] = '\0';
+    return 1;
+}
+
+static int valid_shape_tensor(const Tensore* shape_tensor, int32_t* out_shape, int32_t* out_num_dim, size_t* out_total_elements)
+{
+    if (shape_tensor == NULL || shape_tensor->num_dim != 1)
+    {
+        return 0;
+    }
+
+    int32_t num_dim = shape_tensor->forma[0];
+    if (num_dim <= 0 || num_dim > MAX_DIM)
+    {
+        return 0;
+    }
+
+    size_t totale = 1;
+    for (int i = 0; i < num_dim; i++)
+    {
+        float raw_dim = shape_tensor->dati[i];
+        if (raw_dim <= 0.0f)
+        {
+            return 0;
+        }
+
+        int32_t dim = (int32_t)raw_dim;
+        float diff = raw_dim - (float)dim;
+        if (diff > 1e-6f || diff < -1e-6f)
+        {
+            return 0;
+        }
+
+        if (dim <= 0)
+        {
+            return 0;
+        }
+
+        if (totale > SIZE_MAX / (size_t)dim)
+        {
+            return 0;
+        }
+        totale *= (size_t)dim;
+        out_shape[i] = dim;
+    }
+
+    *out_num_dim = num_dim;
+    if (out_total_elements != NULL)
+    {
+        *out_total_elements = totale;
+    }
+
+    return 1;
+}
 
 /* ----------   PARTE 1: TENSORI    ---------- */
 
@@ -13,39 +108,54 @@
 */
 Tensore* crea_tensore (int32_t num_dim, int32_t* forma)
 {
-    // 1. Allocazione della struttura base del Tensore
-    Tensore* nuovo_tensore = (Tensore*)malloc(sizeof(Tensore));
+    if (num_dim <= 0 || num_dim > MAX_DIM)
+    {
+        fprintf(stderr, "Errore: Numero di dimensioni non valido per il tensore (%d).\n", num_dim);
+        exit(EXIT_FAILURE);
+    }
 
-    // 2. Controllo: Se la memoria è piena segnalo l'errore ed esco
+    Tensore* nuovo_tensore = (Tensore*)malloc(sizeof(Tensore));
     if (nuovo_tensore == NULL)
     {
         perror ("Errore: Impossibile allocare memoria per la struttura del Tensore");
         exit (EXIT_FAILURE);
     }
 
-    // 3. Registrzione dimensioni e calcolo totale degli elementi
     size_t totale_elementi = 1;
     nuovo_tensore -> num_dim = num_dim;
 
     for (int i = 0; i < num_dim; i++)
     {
-        nuovo_tensore -> forma[i] = forma[i];
-        totale_elementi *= forma[i];
-    }
-    
-    // 4. Allocazione array dei dati (inizializzato a zero)
-    nuovo_tensore -> dati = (float*)calloc(totale_elementi, sizeof (float));
+        if (forma[i] <= 0)
+        {
+            fprintf(stderr, "Errore: Dimensione del tensore non valida (forma[%d] = %d).\n", i, forma[i]);
+            free(nuovo_tensore);
+            exit(EXIT_FAILURE);
+        }
 
+        if (totale_elementi > SIZE_MAX / (size_t)forma[i])
+        {
+            fprintf(stderr, "Errore: Dimensione del tensore troppo grande da allocare.\n");
+            free(nuovo_tensore);
+            exit(EXIT_FAILURE);
+        }
+
+        nuovo_tensore -> forma[i] = forma[i];
+        totale_elementi *= (size_t)forma[i];
+    }
+
+    nuovo_tensore -> dati = (float*)calloc(totale_elementi, sizeof (float));
     if (nuovo_tensore -> dati == NULL)
     {
         perror ("Errore: Impossibile allocare memoria per i dati del Tensore");
-        free (nuovo_tensore);         // Libero la struttura creata prima per evitare memory leak
-        exit (EXIT_FAILURE);         // Esco con codice di errore
+        free (nuovo_tensore);
+        exit (EXIT_FAILURE);
     }
 
-   // 5. Inizializzazione dei metadati di gestione memoria
-   nuovo_tensore -> contatore_rif = 1;      // Tensore appena creato: 1 solo riferimento attivo
-   nuovo_tensore -> mmap_attivo = 0;        // Allocato in RAM (non ancora mappato)
+   nuovo_tensore -> contatore_rif = 1;
+   nuovo_tensore -> mmap_attivo = 0;
+   nuovo_tensore -> mmap_size = 0;
+   nuovo_tensore -> mmap_ptr = NULL;
    return nuovo_tensore;
 }
 
@@ -69,21 +179,16 @@ void trattieni_tensore(Tensore* t)
 */
 void rilascia_tensore (Tensore* t)
 {
-    // 1. Controllo: Se il tensore e' NULL, ignoro l'operazione
     if (t == NULL)
     {
         return;
     }
 
-    // 2. Decremento il contatore dei riferimenti
-    t -> contatore_rif--;   
-
-   // 3. Se il contatore arriva a zero, elimino definitivamente il tensore
+    t -> contatore_rif--;
     if (t -> contatore_rif == 0)
     {
         if (t -> mmap_attivo == 0)
         {
-            // Dati allocati in RAM: libero usando free
             if (t -> dati != NULL)
             {
                 free (t -> dati);
@@ -91,16 +196,12 @@ void rilascia_tensore (Tensore* t)
         }
         else
         {
-            // Dati mappati dal disco: chiudo la mappatura con munmap
-            if (t -> dati != NULL)
+            if (t -> mmap_ptr != NULL && t -> mmap_size > 0)
             {
-                // Torno indietro di 64 bite per fornire a munmap l'indirizzo di partenza corretto
-                void* base_ptr = (void*)((char*)t -> dati - 64);
-                munmap(base_ptr, t -> mmap_size);
+                munmap(t -> mmap_ptr, t -> mmap_size);
             }
         }
 
-        // 4. Libero il tensore
         free (t);
     }
 }
@@ -914,46 +1015,37 @@ void op_shape(Stack* s)
 */
 void op_reshape(Stack* s)
 {
-    // 1. Estrazione operandi
-    Tensore* s_shape = pop(s); // Vettore 1D con la nuova forma
-    Tensore* a = pop(s);      // Tensore da modificare
+    Tensore* s_shape = pop(s);
+    Tensore* a = pop(s);
 
-    // 2. Controlli strutturali: la nuova forma deve essere un vettore 1D
-    if (s_shape -> num_dim != 1)
+    int32_t nuova_forma[MAX_DIM];
+    int32_t num_dim_nuovo;
+    size_t elementi_nuovi;
+
+    if (!valid_shape_tensor(s_shape, nuova_forma, &num_dim_nuovo, &elementi_nuovi))
     {
-        fprintf(stderr, "Errore: Il tensore della forma per reshape (r) deve essere in 1D. \n");
-        exit(EXIT_FAILURE); 
+        fprintf(stderr, "Errore: Forma non valida per reshape (r).\n");
+        exit(EXIT_FAILURE);
     }
 
-    // 3. Calcolo degli elementi totali originali
-    int elementi_a = 1;
+    size_t elementi_a = 1;
     for (int i = 0; i < a -> num_dim; i++)
     {
-        elementi_a *= a -> forma[i];
+        elementi_a *= (size_t)a -> forma[i];
     }
 
-    // 4. Calcolo degli elementi totali previsti dalla nuova forma
-    int elementi_nuovi = 1;
-    for (int i = 0; i < s_shape -> forma[0]; i++)
-    {
-        elementi_nuovi *= (int)s_shape -> dati[i];
-    }
-
-    // 5. Verifica compatibilità: i dati fisici non devono variare in numero
     if (elementi_a != elementi_nuovi)
     {
         fprintf(stderr, "Errore: Numero totale di elementi incompatibile per il reshape (r).\n");
         exit(EXIT_FAILURE);
     }
 
-    // 6. Aggiornamento in-place dei metadati dimensionali
-    a -> num_dim = s_shape -> forma[0];
-    for (int i = 0; i < a -> num_dim; i++)
+    a -> num_dim = num_dim_nuovo;
+    for (int i = 0; i < num_dim_nuovo; i++)
     {
-        a -> forma[i] = (int)s_shape -> dati[i];
+        a -> forma[i] = nuova_forma[i];
     }
 
-    // 7. Inserimento e pulizia
     push (s, a);
     rilascia_tensore(s_shape);
 }
@@ -969,42 +1061,24 @@ void op_reshape(Stack* s)
 */
 void op_random(Stack* s)
 {
-    // 1. Estrazione operando che funge da guida per le dimensioni a
     Tensore* s_shape = pop(s);
 
-    // 2. Controlli di sicurezza sulla validita' del tensore guida
-    if (s_shape -> num_dim != 1)
+    int32_t nuova_forma[MAX_DIM];
+    int32_t num_dim_nuovo;
+    size_t totale_elementi;
+
+    if (!valid_shape_tensor(s_shape, nuova_forma, &num_dim_nuovo, &totale_elementi))
     {
-        fprintf(stderr, "Errore: Il tensore delle forma per la generazione casuale (?) deve essere 1D.\n");
-        exit(EXIT_FAILURE);  
-    }
-    if (s_shape -> forma[0] > MAX_DIM || s_shape -> forma[0] == 0)
-    {
-        fprintf(stderr, "Errore: Numero di dimensioni non valido per la generazione casuale (Max %d).\n", MAX_DIM);
+        fprintf(stderr, "Errore: Forma non valida per la generazione casuale (?).\n");
         exit(EXIT_FAILURE);
     }
 
-    // 3. Estrapolazione delle dimensioni finali e del totale elementi
-    int32_t nuova_forma[MAX_DIM];
-    int num_dim_nuovo = s_shape -> forma[0];
-    int totale_elementi = 1;
-
-    for(int i = 0; i < num_dim_nuovo; i++)
-    {
-        nuova_forma[i] = (int) s_shape -> dati[i];
-        totale_elementi *= nuova_forma[i];
-    }
-
-    // 4. Creazione del nuovo tensore
     Tensore* a = crea_tensore(num_dim_nuovo, nuova_forma);
-
-    // 5. Popolamento seriale con numeri casuali normalizzati tra 0.0 e 1.0
-    for(int i = 0; i < totale_elementi; i++)
+    for (size_t i = 0; i < totale_elementi; i++)
     {
         a -> dati[i] = (float)rand() / (float)RAND_MAX;
     }
 
-    // 6. Inserimento e pulizia del tensore guida
     push(s, a);
     rilascia_tensore(s_shape);
 }
@@ -1173,48 +1247,39 @@ void op_somma_riduzione(Stack* s)
 */
 void op_fill(Stack* s)
 {
-    // 1. Estrazione operandi
-    Tensore* v = pop(s);            // 'v' valori in cima  
-    Tensore* s_shape = pop(s);     // 's-shape' è la forma sotto
+    Tensore* v = pop(s);
+    Tensore* s_shape = pop(s);
 
-    // 2. Controlli di sicurezza sulla validita' della forma
-    if (s_shape -> num_dim != 1)
-    {
-        fprintf(stderr, "Errore: Il tensore della forma per il fill (f) deve essere 1D.\n");
-        exit(EXIT_FAILURE);
-    }
-    if (s_shape -> forma[0] > MAX_DIM || s_shape -> forma[0] == 0)
-    {
-        fprintf(stderr, "Errore: Numero di dimensioni non valido per il fill (Max %d).\n", MAX_DIM);
-        exit(EXIT_FAILURE);
-    }
-
-    // 3. Calcolo del totale degli elementi della nuova griglia e allocazione forma
-    int totale_elementi_nuovi = 1;
     int32_t nuova_forma[MAX_DIM];
-    for (int i = 0; i < s_shape -> forma[0]; i++)
+    int32_t num_dim_nuovo;
+    size_t totale_elementi_nuovi;
+
+    if (!valid_shape_tensor(s_shape, nuova_forma, &num_dim_nuovo, &totale_elementi_nuovi))
     {
-        nuova_forma[i] = (int)s_shape -> dati[i];
-        totale_elementi_nuovi *= nuova_forma[i];
+        fprintf(stderr, "Errore: Forma non valida per il fill (f).\n");
+        exit(EXIT_FAILURE);
     }
 
-    // 4. Calcolo degli elementi totali del vettore origine
-    int totale_elementi_v = 1;
-    for(int i = 0; i < v -> num_dim; i++)
+    size_t totale_elementi_v = 1;
+    for (int i = 0; i < v -> num_dim; i++)
     {
-        totale_elementi_v *= v -> forma[i];
+        totale_elementi_v *= (size_t)v -> forma[i];
     }
 
-    // 5. Creazione del nuovo tensore e riempimento parallelizzato con ripetizione modulare
-    Tensore* c = crea_tensore(s_shape -> forma[0], nuova_forma);
+    if (totale_elementi_v == 0)
+    {
+        fprintf(stderr, "Errore: Il tensore dei valori per il fill (f) non può essere vuoto.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    Tensore* c = crea_tensore(num_dim_nuovo, nuova_forma);
 
     #pragma omp parallel for
-    for (int i = 0; i < totale_elementi_nuovi; i++)
+    for (size_t i = 0; i < totale_elementi_nuovi; i++)
     {
         c -> dati[i] = v -> dati[i % totale_elementi_v];
     }
 
-    // 6. Inserimento e pulizia
     push(s, c);
     rilascia_tensore(s_shape);
     rilascia_tensore(v);
@@ -1324,7 +1389,6 @@ void op_over(Stack* s)
 */
 void op_leggi_pgm(Stack* s, const char* nome_file)
 {
-    // 1. Apertura file in modalità lettura binaria ("rb")
     FILE* file = fopen(nome_file, "rb");
     if (!file)
     {
@@ -1332,29 +1396,66 @@ void op_leggi_pgm(Stack* s, const char* nome_file)
         exit(EXIT_FAILURE);
     }
 
-    char formato[3];
+    char formato[16];
+    char token[64];
     int colonne, righe, max_val;
 
-    // 2. Lettura dell'intestazione tipica dei file PGM 
-    fscanf(file, "%2s", formato); 
-    fscanf(file, "%d %d", &colonne, &righe);
-    fscanf(file, "%d", &max_val);
-    fgetc(file);            // Salta il singolo carattere di whitespace dopo max_val
+    if (!read_pgm_token(file, formato, sizeof(formato)) || strcmp(formato, "P5") != 0)
+    {
+        fprintf(stderr, "Errore: Formato PGM non valido o file non supportato (%s).\n", nome_file);
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
 
-    // 3. Creazione del tensore vuoto in RAM per ospitare l'immagine
+    if (!read_pgm_token(file, token, sizeof(token)) || sscanf(token, "%d", &colonne) != 1 || colonne <= 0)
+    {
+        fprintf(stderr, "Errore: Colonne non valide nel file PGM %s.\n", nome_file);
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
+
+    if (!read_pgm_token(file, token, sizeof(token)) || sscanf(token, "%d", &righe) != 1 || righe <= 0)
+    {
+        fprintf(stderr, "Errore: Righe non valide nel file PGM %s.\n", nome_file);
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
+
+    if (!read_pgm_token(file, token, sizeof(token)) || sscanf(token, "%d", &max_val) != 1 || max_val <= 0 || max_val > 255)
+    {
+        fprintf(stderr, "Errore: Valore massimo pixel non valido nel file PGM %s.\n", nome_file);
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
+
     int32_t forma[2] = {righe, colonne};
     Tensore* img = crea_tensore(2, forma);
 
-    // 4. Lettura binaria dei pixel (1 byte per pixel) e normalizzazione
-    unsigned char* pixel_buffer = (unsigned char*)malloc(righe * colonne);
-    fread(pixel_buffer, 1, righe * colonne, file);
-    
-    for (int i = 0; i < righe * colonne; i++)
+    size_t totale_pixel = (size_t)righe * (size_t)colonne;
+    unsigned char* pixel_buffer = (unsigned char*)malloc(totale_pixel);
+    if (pixel_buffer == NULL)
     {
-        img -> dati[i] = (float)pixel_buffer[i] / (float)max_val;
+        perror("Errore: Impossibile allocare memoria per il buffer PGM");
+        fclose(file);
+        rilascia_tensore(img);
+        exit(EXIT_FAILURE);
     }
 
-    // 5. Chiusura del file, pulizia buffer temporaneo e inserimento in cima allo stack
+    size_t read_count = fread(pixel_buffer, 1, totale_pixel, file);
+    if (read_count != totale_pixel)
+    {
+        fprintf(stderr, "Errore: Lettura incompleta dei pixel PGM (%zu/%zu) nel file %s.\n", read_count, totale_pixel, nome_file);
+        free(pixel_buffer);
+        fclose(file);
+        rilascia_tensore(img);
+        exit(EXIT_FAILURE);
+    }
+
+    for (size_t i = 0; i < totale_pixel; i++)
+    {
+        img->dati[i] = (float)pixel_buffer[i] / (float)max_val;
+    }
+
     free(pixel_buffer);
     fclose(file);
     push(s, img);
@@ -1367,7 +1468,6 @@ void op_leggi_pgm(Stack* s, const char* nome_file)
 */
 void op_scrivi_pgm(Stack* s, const char* nome_file)
 {
-    // 1. Estrazione operando e controllo della forma (deve essere un'immagine 2D)
     Tensore* img = pop(s);
     if (img -> num_dim != 2)
     {
@@ -1375,7 +1475,6 @@ void op_scrivi_pgm(Stack* s, const char* nome_file)
         exit(EXIT_FAILURE);
     }
 
-    // 2. Apertura del file in modalità scrittura testo ("wb")
     FILE* file = fopen(nome_file, "wb");
     if (!file)
     {
@@ -1386,23 +1485,37 @@ void op_scrivi_pgm(Stack* s, const char* nome_file)
     int righe = img -> forma[0];
     int colonne = img -> forma[1];
 
-    // 3. Scrittura manuale dell'intestazione del formato PGM
     fprintf(file, "P5\n%d %d\n255\n", colonne, righe);
 
-    // 4. Ciclo di denormalizzazione e scrittura su file binaria
-    unsigned char* pixel_buffer = (unsigned char*)malloc(righe * colonne);
-    for (int i = 0; i < righe * colonne; i++)
+    size_t totale_pixel = (size_t)righe * (size_t)colonne;
+    unsigned char* pixel_buffer = (unsigned char*)malloc(totale_pixel);
+    if (pixel_buffer == NULL)
     {
-        // Controllo: se un calcolo ha generato valori anomali, li forzo nel range 0.0-1.0
+        perror("Errore: Impossibile allocare memoria per il buffer PGM");
+        fclose(file);
+        rilascia_tensore(img);
+        exit(EXIT_FAILURE);
+    }
+
+    for (size_t i = 0; i < totale_pixel; i++)
+    {
         float val = img->dati[i];
         if (val < 0.0f) val = 0.0f;
         if (val > 1.0f) val = 1.0f;
         pixel_buffer[i] = (unsigned char)(val * 255.0f);
-        
     }
-    fwrite(pixel_buffer, 1, righe * colonne, file);
 
-    // 5. Chiusura file e pulizia memoria
+    size_t written = fwrite(pixel_buffer, 1, totale_pixel, file);
+    if (written != totale_pixel)
+    {
+        fprintf(stderr, "Errore: Scrittura incompleta PGM (%zu/%zu) nel file %s.\n", written, totale_pixel, nome_file);
+        free(pixel_buffer);
+        fclose(file);
+        rilascia_tensore(img);
+        exit(EXIT_FAILURE);
+    }
+
+    free(pixel_buffer);
     fclose(file);
     rilascia_tensore(img);
 }
@@ -1414,7 +1527,6 @@ void op_scrivi_pgm(Stack* s, const char* nome_file)
 */
 void op_leggi_binario(Stack* s, const char* nome_file)
 {
-    // 1. Apertura del file a basso livello (file descriptor) per abilitare mmap
     int fd = open(nome_file, O_RDONLY);
     if (fd == -1)
     {
@@ -1422,39 +1534,75 @@ void op_leggi_binario(Stack* s, const char* nome_file)
         exit(EXIT_FAILURE);
     }
 
-    // 2. Scopro dal sistema operativo la dimensione esatta del file in byte
     struct stat st;
-    fstat(fd, &st);
-    size_t fs = st.st_size;
+    if (fstat(fd, &st) == -1)
+    {
+        perror("Errore fstat file binario");
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
 
-    // 3. Mappo tutto il file in memoria (intestazione inclusa)
+    size_t fs = (size_t)st.st_size;
+    if (fs < sizeof(struct on_disk_tensor))
+    {
+        fprintf(stderr, "Errore: File binario %s troppo piccolo per contenere l'intestazione.\n", nome_file);
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+
     void* mapped = mmap(NULL, fs, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (mapped == MAP_FAILED) 
-    { 
-        perror("Errore mmap"); 
+    if (mapped == MAP_FAILED)
+    {
+        perror("Errore mmap");
+        close(fd);
         exit(EXIT_FAILURE);
     }
     close(fd);
 
-    // 4. Lettura dei metadati dai primi 64 byte 
     struct on_disk_tensor* hdr = (struct on_disk_tensor*)mapped;
-    
-    // 5. Creazione della struttura base del Tensore
-    Tensore* t = (Tensore*)malloc(sizeof(Tensore));
-    t -> num_dim = hdr -> ndim;
-    
-    // Copio la forma esatta dall'intestazione mappata
-    for (int i = 0; i < t -> num_dim; i++) 
-    { 
-        t -> forma[i] = hdr -> shape[i]; 
+    if (hdr->ndim <= 0 || hdr->ndim > MAX_DIM)
+    {
+        fprintf(stderr, "Errore: Numero di dimensioni non valido nel file binario %s.\n", nome_file);
+        munmap(mapped, fs);
+        exit(EXIT_FAILURE);
     }
-    
-    t -> contatore_rif = 1;
-    t -> mmap_attivo = 1; 
-    t -> mmap_size = fs;
 
-    // 6. I veri numeri iniziano all'offset indicato dalla struct
-    t -> dati = (float*)((char*)mapped + hdr -> data_offset);
+    Tensore* t = (Tensore*)malloc(sizeof(Tensore));
+    if (t == NULL)
+    {
+        perror("Errore: Impossibile allocare memoria per il tensore mappato");
+        munmap(mapped, fs);
+        exit(EXIT_FAILURE);
+    }
+
+    t->num_dim = hdr->ndim;
+    size_t totale_elementi = 1;
+    for (int i = 0; i < t->num_dim; i++)
+    {
+        if (hdr->shape[i] <= 0)
+        {
+            fprintf(stderr, "Errore: Forma non valida nel file binario %s.\n", nome_file);
+            free(t);
+            munmap(mapped, fs);
+            exit(EXIT_FAILURE);
+        }
+        t->forma[i] = hdr->shape[i];
+        totale_elementi *= (size_t)hdr->shape[i];
+    }
+
+    if (hdr->data_offset < (int64_t)sizeof(struct on_disk_tensor) || (size_t)hdr->data_offset + totale_elementi * sizeof(float) > fs)
+    {
+        fprintf(stderr, "Errore: Data offset non valido nel file binario %s.\n", nome_file);
+        free(t);
+        munmap(mapped, fs);
+        exit(EXIT_FAILURE);
+    }
+
+    t->contatore_rif = 1;
+    t->mmap_attivo = 1;
+    t->mmap_size = fs;
+    t->mmap_ptr = mapped;
+    t->dati = (float*)((char*)mapped + hdr->data_offset);
 
     push(s, t);
 }
@@ -1493,7 +1641,13 @@ void op_scrivi_binario(Stack* s, const char* nome_file)
     memcpy(buffer, &hdr, sizeof(struct on_disk_tensor));
     
     // Scrivo l'intestazione una sola volta (64 byte esatti)
-    fwrite(buffer, 1, 64, f);
+    if (fwrite(buffer, 1, 64, f) != 64)
+    {
+        fprintf(stderr, "Errore: scrittura intestazione binaria fallita per %s.\n", nome_file);
+        fclose(f);
+        rilascia_tensore(t);
+        exit(EXIT_FAILURE);
+    }
 
     // Calcolo quanti float devo scrivere in totale
     size_t totale_elementi = 1;
@@ -1503,7 +1657,13 @@ void op_scrivi_binario(Stack* s, const char* nome_file)
     }
     
     // Scrivo tutti i dati float in un colpo solo
-    fwrite(t -> dati, sizeof(float), totale_elementi, f);
+    if (fwrite(t -> dati, sizeof(float), totale_elementi, f) != totale_elementi)
+    {
+        fprintf(stderr, "Errore: scrittura dati binari incompleta per %s.\n", nome_file);
+        fclose(f);
+        rilascia_tensore(t);
+        exit(EXIT_FAILURE);
+    }
 
     // 5. Chiusura e pulizia
     fclose(f);
