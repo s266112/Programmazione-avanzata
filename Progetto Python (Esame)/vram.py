@@ -4,7 +4,6 @@
 
 """Virtual_vram.py
 
-Implementa la classe VirtualVRAM per il rendered 2D.
 Decodifica i file binari packed a 4-bit di tile sheet e sprite sheet
 convertendoli in matrici indicizzate numpy 256x256.
 """
@@ -78,9 +77,9 @@ class VirtualVRAM:
 if __name__ == '__main__':
     import sys
     
-     # Questo controllo assicura che tu passi i file quando lanci lo script da terminale
+    # Questo controllo mi assicura di passare i file quando lancio lo script da terminale
     if len(sys.argv) != 3:
-        print("Uso: python virtual_vram.py <tiles.bin> <sprites.bin>")
+        print("Uso: python vram.py <tiles.bin> <sprites.bin>")
         raise SystemExit(1)
         
     try:

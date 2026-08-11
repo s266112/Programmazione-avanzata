@@ -4,7 +4,6 @@
 
 """palette.py
 
-Implementa la classe Palette per il renderer 2D.
 Legge una palette JSON con 16 colori RGB e la converte in un array numpy.
 """
 
@@ -14,8 +13,8 @@ from typing import List, Tuple
 
 import numpy as np
 
-class Palette:      # Classe che rappresenta una palette indicizzata a 16 colori.
-
+class Palette:      
+    # Classe che rappresenta una palette indicizzata a 16 colori.
     COLOR_COUNT = 16
     MIN_CHANNEL = 0
     MAX_CHANNEL = 255

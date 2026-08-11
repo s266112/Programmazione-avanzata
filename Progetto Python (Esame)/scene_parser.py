@@ -4,7 +4,6 @@
 
 """scene_parser.py
 
-Implementa la classe SceneParser per il renderer 2D.
 Legge il file JSON della scena e ne estrae la mappa dei tile,
 l'indice di trasparenza e la lista degli sprite.
 """
@@ -70,7 +69,7 @@ class SceneParser:
             raise TypeError("La voce 'sprites' deve essere una lista JSON.")
         self._sprites = raw_sprites
 
-    # GETTER (Metodi di accesso protetto)
+    # Getter (Metodi di accesso protetto)
     def get_transparent_index(self) -> int:
         return self._transparent_index
 
@@ -81,13 +80,13 @@ class SceneParser:
         return self._sprites.copy()
 
 
-# TEST DI MODULO 
+# Test di prova
 if __name__ == '__main__':
     import sys
     
-    # Assicuriamoci che venga passato il percorso del JSON da terminale
+    # Mi assicuro che venga passato il percorso del JSON da terminale
     if len(sys.argv) != 2:
-        print("Uso: python scene_parser.py ")
+        print("Uso: python scene_parser.py <scene.json>")
         raise SystemExit(1)
         
     try:
@@ -97,7 +96,7 @@ if __name__ == '__main__':
         print(f"Shape Tile Map: {parser.get_tile_map().shape}")
         print(f"Numero di Sprites Trovati: {len(parser.get_sprites())}")
         
-        # Stampiamo il primo sprite per verificare i dati
+        # Stampo il primo sprite per verificare i dati
         if len(parser.get_sprites()) > 0:
             primo_sprite = parser.get_sprites()[0]
             print(f"Dati primo sprite: ID={primo_sprite.get('id')}, X={primo_sprite.get('x')}, Y={primo_sprite.get('y')}")
