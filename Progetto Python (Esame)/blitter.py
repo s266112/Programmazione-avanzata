@@ -15,7 +15,9 @@ class Blitter:
     SCREEN_WIDTH = 640
     SCREEN_HEIGHT = 480
     TILE_SIZE = 32
-    SHEET_COLS = 8      # Il tile sheet ha i tile in una griglia 8x8
+    SHEET_COLS = 8              # Colonne per il tile sheet (fondale)
+    SPRITE_SIZE = 64            # Dimensione in pixel degli sprite
+    SPRITE_COLS = 4             # Colonne per lo sprite sheet (griglia 4x4)
 
     def __init__(self, vram, scene) -> None:
         # Inizializzo il Blitter con le dipendenze necessarie e preparo lo schermo
@@ -70,14 +72,14 @@ class Blitter:
             flip_v = sprite.get("flip_v", False)
             rotation = sprite.get("rotation", 0)
 
-            # Calcolo le coordinate sorgente sullo sprite (griglia 8x8)
-            sheet_row = (sprite_id // self.SHEET_COLS) * self.TILE_SIZE
-            sheet_col = (sprite_id % self.SHEET_COLS) * self.TILE_SIZE
+            # Calcolo le coordinate sorgente sullo sprite sheet (griglia 4x4)
+            sheet_row = (sprite_id // self.SPRITE_COLS) * self.SPRITE_SIZE
+            sheet_col = (sprite_id % self.SPRITE_COLS) * self.SPRITE_SIZE
 
-            # Estraggo il blocco 32 x 32 iniziale (uso .copy per non modificare lo sheet originale quando lo ruoto)
+            # Estraggo il blocco 64x64 iniziale
             sprite_pixels = sprite_sheet[
-                sheet_row : sheet_row + self.TILE_SIZE,
-                sheet_col : sheet_col + self.TILE_SIZE
+                sheet_row : sheet_row + self.SPRITE_SIZE,
+                sheet_col : sheet_col + self.SPRITE_SIZE
             ].copy()
 
             # Applico il ribaltamento orizzontale
@@ -93,18 +95,29 @@ class Blitter:
                 k = rotation // 90
                 sprite_pixels = np.rot90(sprite_pixels, -k)
 
-            # Controllo i limiti dello schermo per non uscire dal frame buffer
-            if x < 0 or y < 0 or x + self.TILE_SIZE > self.SCREEN_WIDTH or y + self.TILE_SIZE > self.SCREEN_HEIGHT:
+            # Clipping geometrico: calcolo le coordinate reali considerando i bordi dello schermo
+            x_start = max(0, x)
+            y_start = max(0, y)
+            x_end = min(self.SCREEN_WIDTH, x + self.SPRITE_SIZE)
+            y_end = min(self.SCREEN_HEIGHT, y + self.SPRITE_SIZE)
+
+            # Se lo sprite è completamente fuori dallo schermo, lo salto
+            if x_start >= x_end or y_start >= y_end:
                 continue
 
-            # Estraggo la porzione di schermo in cui devo incollare lo sprite
-            fb_slice = self.frame_buffer[y : y + self.TILE_SIZE, x : x + self.TILE_SIZE]
+            # Calcolo gli offset per ritagliare lo sprite se esce dai bordi
+            sprite_x_start = x_start - x
+            sprite_y_start = y_start - y
+            sprite_x_end = sprite_x_start + (x_end - x_start)
+            sprite_y_end = sprite_y_start + (y_end - y_start)
 
-            # Creo la maschera: TRUE dove il pixel non è trasparente
-            mask = sprite_pixels != transparent_idx
+            # Estraggo le porzioni corrispondenti di schermo e sprite
+            fb_slice = self.frame_buffer[y_start:y_end, x_start:x_end]
+            sprite_slice = sprite_pixels[sprite_y_start:sprite_y_end, sprite_x_start:sprite_x_end]
 
-            # Uso la maschera per sovrascrivere solo i pixel visibili
-            fb_slice[mask] = sprite_pixels[mask]
+            # Creo la maschera sulle dimensioni corrette e incollo
+            mask = sprite_slice != transparent_idx
+            fb_slice[mask] = sprite_slice[mask]
 
 
     def get_frame_buffer(self) -> np.ndarray:
@@ -135,11 +148,10 @@ if __name__ == '__main__':
         blitter.draw_sprites()
         
         fb = blitter.get_frame_buffer()
-        print("Fondale disegnato con successo!")
+        print("Fondale e sprites disegnati con successo!")
         print(f"Frame Buffer Shape: {fb.shape} (Atteso: 480, 640)")
         
-        # Testo un pixel specifico: alla riga 13 (Y=416), colonna 0 della tile_map c'è l'id 4
-        # Controllo il pixel corrispondente nel frame buffer
+        # Testo un pixel specifico
         pixel_test = fb[420, 10]
         print(f"Valore indicizzato di test (Y=420, X=10): {pixel_test}")
 

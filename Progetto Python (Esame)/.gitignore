@@ -23,3 +23,6 @@ ENV/
 *.bak
 *.swp
 *.swo
+
+# Output generati automaticamente (richiesto per la consegna)
+*.png
