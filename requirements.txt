@@ -1,0 +1,12 @@
+# Corso Programmazione Avanzata (C + Python)
+numpy
+Pillow
+matplotlib
+scipy
+line_profiler
+cffi
+cython
+
+# Jupyter
+jupyter
+ipykernel

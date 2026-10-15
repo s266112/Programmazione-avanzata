@@ -1,0 +1,35 @@
+# --- Ambienti virtuali ---
+.venv_*/
+venv/
+.venv/
+env/
+
+# --- Python cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# --- Build C / Cython ---
+*.o
+*.so
+*.dylib
+*.dll
+a.out
+*.c.py
+
+# --- Profiling ---
+*.lprof
+*.prof
+
+# --- File di sistema ---
+desktop.ini
+.DS_Store
+Thumbs.db
+
+# --- IDE ---
+.vscode/
+.idea/
