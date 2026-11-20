@@ -29,29 +29,40 @@ struct on_disk_tensor {
 
 /* ----------   PARTE 1: TENSORI   ---------- */
 
-/* 1.1 STRUTTURA DEL TENSORE 
--> Rappresenta l'unità di dato fondamentale manipolata dall'interprete.
--> Contiene i valori matematici, i dettagli sulla dimensionalità e i metadati necessari per la gestione efficiente della memoria.
+/* 1.1 BUFFER DEI DATI
+-> Contiene i valori del tensore e puo' essere condiviso tra piu' tensori (es. dopo reshape e ravel).
+-> Ha un suo contatore dei riferimenti: viene liberato solo quando nessun tensore lo usa piu'.
 */
-
-typedef struct 
+typedef struct
 {
-    float* dati;                // Puntatore all'area di memoria contenente i valori effettivi
-    int32_t forma[MAX_DIM];     // Array delle dimensioni (Es: numerio di righe/colonne)
-    int32_t num_dim;            // Numero di dimensioni attive (1 per vettori, 2 per matrici)
-
-
-    int32_t contatore_rif;      // Contatore dei riferimenti per ottimizzare le duplicazioni
+    float* dati;                // Valori effettivi
+    int32_t contatore_rif;      // Numero di tensori che usano il buffer
     int mmap_attivo;            // Flag: 1 se il file è mappato in sola lettura (mmap), 0 altrimenti
     size_t mmap_size;           // Dimensione totale della mappatura per munmap
     void* mmap_ptr;             // Puntatore all'inizio della mappatura su disco
+} BufferDati;
+
+/* 1.2 STRUTTURA DEL TENSORE
+-> Rappresenta l'unità di dato fondamentale manipolata dall'interprete.
+-> Contiene forma e dimensioni; i valori stanno nel buffer, cosi' piu' tensori possono condividerli.
+*/
+typedef struct
+{
+    float* dati;                // Puntatore ai valori (uguale a buffer->dati)
+    int32_t forma[MAX_DIM];     // Array delle dimensioni (Es: numero di righe/colonne)
+    int32_t num_dim;            // Numero di dimensioni attive (1 per vettori, 2 per matrici)
+    int32_t contatore_rif;      // Contatore dei riferimenti per ottimizzare le duplicazioni
+    BufferDati* buffer;         // Buffer dei dati (anche condiviso)
 } Tensore;
 
 
-// 1.2 FUNZIONI DI GESTIONE MEMORIA DEL TENSORE
+// 1.3 FUNZIONI DI GESTIONE MEMORIA DEL TENSORE
 
 /*  --- CREA_TENSORE --- */
 Tensore* crea_tensore (int32_t num_dim, int32_t* forma);
+
+/*  --- CREA_VISTA --- */
+Tensore* crea_vista (Tensore* a, int32_t num_dim, const int32_t* forma);
 
 /* --- TRATTIENI_TENSORE --- */
 void trattieni_tensore (Tensore* t);
@@ -68,13 +79,23 @@ void stampa_tensore(Tensore* t);
 
 /* 2.1 STRUTTURA DELLO STACK
     -> L'interprete si basa su una pila LIFO (Last In, First Out).
-    -> Implemento lo stack come in una lista concatenata dove gli inserimenti e le rimozioni avvengono esclusivamente dalla "cima" 
+    -> Implemento lo stack come in una lista concatenata dove gli inserimenti e le rimozioni avvengono esclusivamente dalla "cima"
+    -> Ogni elemento puo' essere un tensore o una stringa (nome di file).
 */
+
+// Tipo dell'elemento nel nodo
+typedef enum
+{
+    ELEM_TENSORE,
+    ELEM_STRINGA
+} TipoElemento;
 
 // Nodo della lista concatenata
 typedef struct NodoStack
 {
-    Tensore* tensore;                   // Il dato è contenuto in questo nodo
+    TipoElemento tipo;                  // Tensore o stringa
+    Tensore* tensore;                   // Usato se è un tensore
+    char* stringa;                      // Usato se è una stringa
     struct NodoStack* prossimo;         // Puntatore all'elemento sottostante nella pila
 } NodoStack;
 
@@ -92,8 +113,14 @@ Stack* crea_stack(void);
 /*  --- PUSH --- */
 void push (Stack* s, Tensore* t);
 
+/*  --- PUSH_STRINGA --- */
+void push_stringa (Stack* s, const char* str);
+
 /*  --- POP --- */
 Tensore* pop (Stack* s);
+
+/*  --- POP_STRINGA --- */
+char* pop_stringa (Stack* s);
 
 /*  --- LIBERA_STACK --- */
 void libera_stack (Stack* s);
@@ -153,7 +180,7 @@ void op_convoluzione_2d(Stack* s);
 
 /* ----------   PARTE 6: FORMA DEI TENSORI   ---------- */
 
-/* 6.1 RAVEL (~) */
+/* 6.1 RAVEL (_) */
 void op_ravel(Stack* s);
 
 /* 6.2 SHAPE (#) */
@@ -219,16 +246,16 @@ void op_over(Stack* s);
 /* ----------   PARTE 11: INPUT/OUTPUT   ---------- */
 
 /* 11.1 LETTURA PGM '(' */
-void op_leggi_pgm(Stack* s, const char* nome_file);
+void op_leggi_pgm(Stack* s);
 
 /* 11.2 SCRITTURA PGM ')' */
-void op_scrivi_pgm(Stack* s, const char* nome_file);
+void op_scrivi_pgm(Stack* s);
 
 /* 11.3 LETTURA BINARIA MAPPATA '{' */
-void op_leggi_binario(Stack* s, const char* nome_file);
+void op_leggi_binario(Stack* s);
 
 /* 11.4 SCRITTURA BINARIA '}' */
-void op_scrivi_binario(Stack* s, const char* nome_file);
+void op_scrivi_binario(Stack* s);
 
 #endif
 
