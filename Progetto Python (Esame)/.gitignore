@@ -8,10 +8,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 venv/
-.env/
-.envrc
+.venv*/
 ENV/
 .env/
+.envrc
 
 # Editor folders
 .vscode/
@@ -26,3 +26,4 @@ ENV/
 
 # Output generati automaticamente (richiesto per la consegna)
 *.png
+!example/*.png
