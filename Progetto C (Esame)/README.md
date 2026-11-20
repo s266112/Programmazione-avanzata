@@ -7,12 +7,13 @@ Questo progetto implementa un interprete stack-based per tensori in C. Il lingua
 ## Funzionalità principali ✨
 
 - Interpretazione token-based in stile Forth
-- Stack di tensori con reference counting
+- Stack tipizzato (tensori e stringhe) con controllo degli errori di tipo
+- Reference counting sui tensori e sui buffer dei dati
 - Operazioni elemento per elemento: `+`, `-`, `*`
 - Confronti logici: `<`, `>`, `=`
 - Operatori logici: `&`, `|`, `!`
 - Matrici 2D: prodotto `@`, convoluzione `c`
-- Ravel `~` / alias `_`, `shape` `#`, `reshape` `r`
+- Ravel `_`, shape `#`, reshape `r` (ravel e reshape condividono i dati, senza copie)
 - Generazione casuale `?`, fill `f`, somma riduzione `S`
 - Gestione I/O file PGM: `(` per lettura, `)` per scrittura
 - Persistenza binaria con `mmap`: `{` per lettura, `}` per scrittura
@@ -57,7 +58,9 @@ Nella cartella `examples/` trovi script di prova che coprono diverse funzionalit
 - `(` legge un file PGM e normalizza i pixel in `[0.0, 1.0]`
 - `)` scrive un tensore 2D in formato PGM `P5`
 - `{` mappa un file binario in memoria tramite `mmap`
-- `}` salva un tensore in un file binario con header fisso da 64 byte
+- `}` salva un tensore in un file binario: `struct on_disk_tensor`, padding fino a `data_offset` = 64, poi i dati float
+- I nomi di file sono stringhe sullo stack: `( ) { }` li prelevano dalla cima (es. `a "file.bin" }`)
+- Formato di stampa di `p`: `Tensor(shape=[2 3], data=[...])` su una riga
 
 ## Stato dei test ✅
 

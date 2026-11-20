@@ -12,7 +12,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
+#include <omp.h>
 
+/* --- READ_PGM_TOKEN ---
+    -> Legge il prossimo token dell'intestazione PGM, saltando spazi e commenti '#'.
+    -> Ritorna 1 se ha letto un token in 'buffer', 0 se il file e' finito.
+*/
 static int read_pgm_token(FILE* file, char* buffer, size_t size)
 {
     int ch;
@@ -49,6 +55,10 @@ static int read_pgm_token(FILE* file, char* buffer, size_t size)
     return 1;
 }
 
+/* --- VALID_SHAPE_TENSOR ---
+    -> Controlla che il tensore sia una forma valida (1D, 1 o 2 interi positivi). Usata da r, ? e f.
+    -> Ritorna 1 se valida e scrive forma, numero di dimensioni e totale elementi; 0 altrimenti.
+*/
 static int valid_shape_tensor(const Tensore* shape_tensor, int32_t* out_shape, int32_t* out_num_dim, size_t* out_total_elements)
 {
     if (shape_tensor == NULL || shape_tensor->num_dim != 1)
@@ -66,7 +76,8 @@ static int valid_shape_tensor(const Tensore* shape_tensor, int32_t* out_shape, i
     for (int i = 0; i < num_dim; i++)
     {
         float raw_dim = shape_tensor->dati[i];
-        if (raw_dim <= 0.0f)
+        // Rifiuto anche valori troppo grandi per un int32_t
+        if (!(raw_dim > 0.0f) || raw_dim >= 2147483648.0f)
         {
             return 0;
         }
@@ -98,6 +109,19 @@ static int valid_shape_tensor(const Tensore* shape_tensor, int32_t* out_shape, i
     }
 
     return 1;
+}
+
+/* --- NUMERO_ELEMENTI ---
+    -> Ritorna il numero totale di elementi del tensore.
+*/
+static size_t numero_elementi(const Tensore* t)
+{
+    size_t totale = 1;
+    for (int i = 0; i < t -> num_dim; i++)
+    {
+        totale *= (size_t)t -> forma[i];
+    }
+    return totale;
 }
 
 /* ----------   PARTE 1: TENSORI    ---------- */
@@ -144,19 +168,58 @@ Tensore* crea_tensore (int32_t num_dim, int32_t* forma)
         totale_elementi *= (size_t)forma[i];
     }
 
-    nuovo_tensore -> dati = (float*)calloc(totale_elementi, sizeof (float));
-    if (nuovo_tensore -> dati == NULL)
+    BufferDati* buffer = (BufferDati*)malloc(sizeof(BufferDati));
+    if (buffer == NULL)
     {
-        perror ("Errore: Impossibile allocare memoria per i dati del Tensore");
+        perror ("Errore: Impossibile allocare memoria per il buffer del Tensore");
         free (nuovo_tensore);
         exit (EXIT_FAILURE);
     }
 
-   nuovo_tensore -> contatore_rif = 1;
-   nuovo_tensore -> mmap_attivo = 0;
-   nuovo_tensore -> mmap_size = 0;
-   nuovo_tensore -> mmap_ptr = NULL;
-   return nuovo_tensore;
+    buffer -> dati = (float*)calloc(totale_elementi, sizeof (float));
+    if (buffer -> dati == NULL)
+    {
+        perror ("Errore: Impossibile allocare memoria per i dati del Tensore");
+        free (buffer);
+        free (nuovo_tensore);
+        exit (EXIT_FAILURE);
+    }
+    buffer -> contatore_rif = 1;
+    buffer -> mmap_attivo = 0;
+    buffer -> mmap_size = 0;
+    buffer -> mmap_ptr = NULL;
+
+    nuovo_tensore -> buffer = buffer;
+    nuovo_tensore -> dati = buffer -> dati;
+    nuovo_tensore -> contatore_rif = 1;
+    return nuovo_tensore;
+}
+
+
+/*  --- CREA_VISTA ---
+    -> Crea un nuovo tensore con forma diversa che condivide i dati di 'a' (senza copiarli).
+    -> Usata da reshape e ravel: 'a' resta invariato.
+*/
+Tensore* crea_vista (Tensore* a, int32_t num_dim, const int32_t* forma)
+{
+    Tensore* vista = (Tensore*)malloc(sizeof(Tensore));
+    if (vista == NULL)
+    {
+        perror ("Errore: Impossibile allocare memoria per la struttura del Tensore");
+        exit (EXIT_FAILURE);
+    }
+
+    vista -> num_dim = num_dim;
+    for (int i = 0; i < MAX_DIM; i++)
+    {
+        vista -> forma[i] = (i < num_dim) ? forma[i] : 0;
+    }
+
+    vista -> buffer = a -> buffer;
+    vista -> buffer -> contatore_rif++;
+    vista -> dati = a -> dati;
+    vista -> contatore_rif = 1;
+    return vista;
 }
 
 
@@ -175,7 +238,7 @@ void trattieni_tensore(Tensore* t)
 
 /* --- RILASCIA_TENSORE --- 
     -> Decrementa il contatore dei riferimenti del tensore;
-    -> Dealloca la memoria (o chiude la mmap) se i riferimenti scendono a zero.
+    -> Dealloca la memoria (o chiude la mmap) solo quando nessuno usa piu' i dati.
 */
 void rilascia_tensore (Tensore* t)
 {
@@ -185,83 +248,58 @@ void rilascia_tensore (Tensore* t)
     }
 
     t -> contatore_rif--;
-    if (t -> contatore_rif == 0)
+    if (t -> contatore_rif > 0)
     {
-        if (t -> mmap_attivo == 0)
-        {
-            if (t -> dati != NULL)
-            {
-                free (t -> dati);
-            }
-        }
-        else
-        {
-            if (t -> mmap_ptr != NULL && t -> mmap_size > 0)
-            {
-                munmap(t -> mmap_ptr, t -> mmap_size);
-            }
-        }
+        return;
+    }
 
-        free (t);
+    BufferDati* buffer = t -> buffer;
+    free (t);
+
+    buffer -> contatore_rif--;
+    if (buffer -> contatore_rif == 0)
+    {
+        if (buffer -> mmap_attivo == 0)
+        {
+            free (buffer -> dati);
+        }
+        else if (buffer -> mmap_ptr != NULL && buffer -> mmap_size > 0)
+        {
+            munmap(buffer -> mmap_ptr, buffer -> mmap_size);
+        }
+        free (buffer);
     }
 }
 
 
 /*  --- STAMPA_TENSORE ---
     -> Stampa a schermo il contenuto del tensore.
-    -> Formattazione: Tensor (shape=[...], data=[...])
+    -> Formattazione: Tensor(shape=[...], data=[...])
 */
 void stampa_tensore(Tensore* t)
 {
     // 1. Controlli di integrità del tensore
-    if (t == NULL)
+    if (t == NULL || t -> dati == NULL)
     {
-        printf ("Errore impossibile stampare, il tensore è NULL.\n");
-        return;
-    }
-    if (t -> dati == NULL)
-    {
-        printf ("Errore: Il tensore non contiene dati allocati.\n");
-        return;
+        fprintf (stderr, "Errore: impossibile stampare un tensore non valido.\n");
+        exit (EXIT_FAILURE);
     }
 
-    // 2. Stampa formattata in base alle dimensioni
-    if (t -> num_dim == 1)
+    // 2. Forma
+    printf("Tensor(shape=[");
+    for (int i = 0; i < t -> num_dim; i++)
     {
-        // CASO VETTORE 1D
-        printf("Tensor (shape=[%d], data=[", t -> forma[0]);
-        for (int i = 0; i < t -> forma[0]; i++)
-        {
-            printf("%f%s", t -> dati[i], (i == t -> forma[0] - 1) ? "" : " ");
-        }
-        printf("])\n");
+        printf("%s%d", (i == 0) ? "" : " ", t -> forma[i]);
     }
-    else if (t -> num_dim == 2)
-    {
-        // CASO MATRICE 2D
-        printf("Tensor (shape=[%d %d], data=[\n", t -> forma[0], t -> forma[1]);
-        int righe = t -> forma[0];
-        int colonne = t -> forma[1];
 
-        // Doppio ciclo per simulare la griglia spaziale
-        for (int r = 0; r < righe; r++)
-        {
-            printf("  [ ");
-            for (int c = 0; c < colonne; c++)
-            {
-                // Calcolo l'indice dell'array monodimensionale
-                int indice = (r * colonne) + c;
-                printf ("%f%s", t -> dati[indice], (c == colonne - 1) ? "" : " ");
-            }
-            printf("]%s\n", (r == righe - 1) ? "" : ",");
-        }
-        printf("])\n");
-    }
-    else
+    // 3. Dati
+    printf("], data=[");
+    size_t totale_elementi = numero_elementi(t);
+    for (size_t i = 0; i < totale_elementi; i++)
     {
-        printf("Errore: Numero di dimensioni non supportato (%d).\n", t -> num_dim);
+        printf("%s%f", (i == 0) ? "" : " ", t -> dati[i]);
     }
-    printf ("\n");          
+    printf("])\n");
 }
 
 
@@ -289,54 +327,125 @@ Stack* crea_stack(void)
     return nuovo_stack;
 }
 
-/*  --- PUSH ---
-    -> Inserisce un tensore in cima allo stack
+/*  --- PUSH_NODO ---
+    -> Crea un nuovo nodo (tensore o stringa) e lo inserisce in cima allo stack
 */
-void push(Stack*s, Tensore* t)
+static void push_nodo(Stack* s, TipoElemento tipo, Tensore* t, char* str)
 {
-    // 1. Controllo validità dell'input
-    if (s == NULL || t == NULL)
-    {
-        return;
-    }
-
-    // 2. Creo il nuovo nodo della catena
     NodoStack* nuovo_nodo = (NodoStack*)malloc(sizeof(NodoStack));
-
     if (nuovo_nodo == NULL)
     {
         perror ("Errore: Impossibile allocare memoria per un NodoStack");
         exit (EXIT_FAILURE);
     }
 
-    // 3. Inserisco il dato e aggancio il nuovo nodo alla vecchia cima
-    nuovo_nodo -> tensore = t;                  
-    nuovo_nodo -> prossimo = s -> cima;         
+    nuovo_nodo -> tipo = tipo;
+    nuovo_nodo -> tensore = t;
+    nuovo_nodo -> stringa = str;
+    nuovo_nodo -> prossimo = s -> cima;
     s -> cima = nuovo_nodo;
+}
+
+/*  --- PUSH ---
+    -> Inserisce un tensore in cima allo stack
+*/
+void push(Stack*s, Tensore* t)
+{
+    if (s == NULL || t == NULL)
+    {
+        return;
+    }
+    push_nodo(s, ELEM_TENSORE, t, NULL);
+}
+
+/*  --- PUSH_STRINGA ---
+    -> Inserisce una copia della stringa (nome di file) in cima allo stack
+*/
+void push_stringa(Stack* s, const char* str)
+{
+    if (s == NULL || str == NULL)
+    {
+        return;
+    }
+
+    char* copia = (char*)malloc(strlen(str) + 1);
+    if (copia == NULL)
+    {
+        perror ("Errore: Impossibile allocare memoria per una stringa");
+        exit (EXIT_FAILURE);
+    }
+    strcpy(copia, str);
+    push_nodo(s, ELEM_STRINGA, NULL, copia);
+}
+
+/*  --- POP_NODO ---
+    -> Rimuove e restituisce il nodo in cima allo stack (errore se lo stack e' vuoto)
+*/
+static NodoStack* pop_nodo(Stack* s)
+{
+    if (s == NULL || s -> cima == NULL)
+    {
+        fprintf (stderr, "Errore: stack vuoto, operandi insufficienti per l'operazione!\n");
+        exit (EXIT_FAILURE);
+    }
+
+    NodoStack* nodo = s -> cima;
+    s -> cima = nodo -> prossimo;
+    nodo -> prossimo = NULL;
+    return nodo;
+}
+
+/*  --- LIBERA_NODO ---
+    -> Libera il nodo e il suo contenuto (tensore o stringa)
+*/
+static void libera_nodo(NodoStack* nodo)
+{
+    if (nodo -> tipo == ELEM_TENSORE)
+    {
+        rilascia_tensore(nodo -> tensore);
+    }
+    else
+    {
+        free(nodo -> stringa);
+    }
+    free(nodo);
 }
 
 /*  --- POP ---
     -> Rimuove e restituisce il tensore in cima allo stack
+    -> Errore se lo stack e' vuoto o se in cima c'e' una stringa
 */
 Tensore* pop (Stack* s)
 {
-    // 1. Controllo: Se lo stack è vuoto, segnalo l'errore ed esco
-    if (s == NULL || s -> cima == NULL)
+    if (s != NULL && s -> cima != NULL && s -> cima -> tipo != ELEM_TENSORE)
     {
-        fprintf (stderr, "Errore: tentativo di estrarre un elemento da uno stack vuoto!\n");
-        exit (EXIT_FAILURE);   
+        fprintf (stderr, "Errore di tipo: atteso un tensore ma in cima allo stack c'e' la stringa \"%s\".\n",
+                 s -> cima -> stringa);
+        exit (EXIT_FAILURE);
     }
 
-    // 2. Individuo il nodo da rimuovere (l'attuale cima) e ne salvo il tensore
-    NodoStack* nodo_da_rimuovere = s -> cima;
-    Tensore* tensore_estratto = nodo_da_rimuovere -> tensore;
-
-    // 3. Aggiorno la cima: La nuova cima diventa il nodo sottostante
-    s -> cima = nodo_da_rimuovere -> prossimo;
-
-    // 4. Distruggo fisicamente il vecchio nodo e restituisco il tensore
-    free (nodo_da_rimuovere);
+    NodoStack* nodo = pop_nodo(s);
+    Tensore* tensore_estratto = nodo -> tensore;
+    free (nodo);
     return tensore_estratto;
+}
+
+/*  --- POP_STRINGA ---
+    -> Rimuove e restituisce la stringa in cima allo stack (da liberare con free)
+    -> Errore se lo stack e' vuoto o se in cima c'e' un tensore
+*/
+char* pop_stringa (Stack* s)
+{
+    if (s != NULL && s -> cima != NULL && s -> cima -> tipo != ELEM_STRINGA)
+    {
+        fprintf (stderr, "Errore di tipo: atteso un nome di file (stringa) ma in cima allo stack c'e' un tensore.\n");
+        exit (EXIT_FAILURE);
+    }
+
+    NodoStack* nodo = pop_nodo(s);
+    char* stringa = nodo -> stringa;
+    free (nodo);
+    return stringa;
 }
 
 /*  --- LIBERA_STACK ---
@@ -344,20 +453,16 @@ Tensore* pop (Stack* s)
 */
 void libera_stack(Stack* s)
 {
-    // 1. Controllo: Se lo stack non esiste, non c'è nulla da liberare
     if (s == NULL)
     {
         return;
     }
 
-    // 2. Finchè la cima non è vuota, continuo a estrarre e distruggere
     while (s -> cima != NULL)
     {
-        Tensore* t = pop(s);            
-        rilascia_tensore(t);            
+        libera_nodo(pop_nodo(s));
     }
 
-    // 3. Libero la struttura principale
     free(s);
 }
 
@@ -372,8 +477,8 @@ void libera_stack(Stack* s)
 void op_somma(Stack*s)
 {
     // 1. Estrazione operandi. Notazione: b a -- a+b 
-    Tensore* b = pop(s);
     Tensore* a = pop(s);
+    Tensore* b = pop(s);
 
     // 2. Controllo compatibilità dimensioni e forma
     if (a -> num_dim != b -> num_dim)
@@ -813,20 +918,19 @@ void op_prodotto_matrici(Stack* s)
     int col_b = b -> forma[1];
 
     // 5. Calcolo parallelo sulle righe di C
+    //    Ordine i-k-j: B e C vengono lette per righe, cosi' si sfrutta meglio la cache
     #pragma omp parallel for
     for (int i = 0; i < righe_a; i++)
     {
-        for (int j = 0; j < col_b; j++)
+        float* riga_c = &c -> dati[(size_t)i * col_b];
+        for (int k = 0; k < col_a_righe_b; k++)
         {
-            float somma = 0.0f;
-            for (int k = 0; k < col_a_righe_b; k++)
+            float val_a = a -> dati[(size_t)i * col_a_righe_b + k];
+            const float* riga_b = &b -> dati[(size_t)k * col_b];
+            for (int j = 0; j < col_b; j++)
             {
-                // Mappatura da array 1D a griglia 2D: (riga * tot_colonne) + colonna
-                float val_a = a -> dati[i * col_a_righe_b + k];
-                float val_b = b -> dati[k * col_b + j];
-                somma += val_a * val_b;
+                riga_c[j] += val_a * riga_b[j];
             }
-            c -> dati [i * col_b + j] = somma; 
         }
     }
 
@@ -950,9 +1054,9 @@ void op_convoluzione_2d(Stack* s)
 
 /* ----------   // PARTE 6: FORMA DEI TENSORI   ---------- */
 
-/* --- RAVEL (~) ---
+/* --- RAVEL (_) ---
     -> Appiattisce un tensore trasformandolo in un vettore 1D.
-    -> Modifica i metadati in-place senza riallocare i dati fisici.
+    -> Non copia i dati: il nuovo tensore condivide il buffer di 'a'.
     -> Notazione: a -- a'
 */
 void op_ravel(Stack* s)
@@ -967,20 +1071,12 @@ void op_ravel(Stack* s)
         return;
     }
 
-    // 3. Calcolo il totale degli elementi fisici
-    int totale_elementi = 1;
-    for (int i = 0; i < a -> num_dim; i++)
-    {
-        totale_elementi *= a -> forma[i];
-    }
+    // 3. Nuova forma 1D
+    int32_t nuova_forma[1] = { (int32_t)numero_elementi(a) };
 
-    // 4. Modifico la forma direttamente nel tensore esistente (in-place)
-    a -> num_dim = 1;
-    a -> forma[0] = totale_elementi;
-    a -> forma[1] = 0; // Pulizia per sicurezza
-
-    // 5. Reinserimento del tensore aggiornato
-    push(s, a);
+    // 4. Inserimento e pulizia
+    push(s, crea_vista(a, 1, nuova_forma));
+    rilascia_tensore(a);
 }
 
 /* --- SHAPE (#) ---
@@ -1009,7 +1105,7 @@ void op_shape(Stack* s)
 }
 
 /* --- RESHAPE (r) ---
-    -> Modifica le dimensioni di un tensore in-place (senza alterare la memoria fisica).
+    -> Ritorna il tensore 'a' con le dimensioni indicate da 's', condividendo i dati (senza copia).
     -> Il numero totale di elementi deve rimanere invariato.
     -> Notazione: a s -- a'
 */
@@ -1040,13 +1136,8 @@ void op_reshape(Stack* s)
         exit(EXIT_FAILURE);
     }
 
-    a -> num_dim = num_dim_nuovo;
-    for (int i = 0; i < num_dim_nuovo; i++)
-    {
-        a -> forma[i] = nuova_forma[i];
-    }
-
-    push (s, a);
+    push (s, crea_vista(a, num_dim_nuovo, nuova_forma));
+    rilascia_tensore(a);
     rilascia_tensore(s_shape);
 }
 
@@ -1089,7 +1180,7 @@ void op_random(Stack* s)
 
 /* --- RELU (R) ---
     -> Sostituisce tutti gli elementi negativi con 0.0 (relu(x) = max(0, x)).
-    -> L'operazione viene eseguita in-place per ottimizzare la memoria.
+    -> Crea un nuovo tensore: 'a' puo' essere condiviso (dopo 'd'/'o') o in sola lettura (dopo '{').
     -> Notazione: a -- relu(a)
 */
 void op_relu(Stack* s)
@@ -1104,18 +1195,19 @@ void op_relu(Stack* s)
         totale_elementi *= a -> forma[i];
     }
 
-    // 3. Modifica in-place (Parallelizzata)
+    // 3. Allocazione del risultato
+    Tensore* c = crea_tensore(a -> num_dim, a -> forma);
+
+    // 4. Calcolo parallelo
     #pragma omp parallel for
     for (int i = 0; i < totale_elementi; i++)
     {
-        if (a -> dati[i] < 0.0f)
-        {
-            a -> dati[i] = 0.0f;
-        }
+        c -> dati[i] = (a -> dati[i] < 0.0f) ? 0.0f : a -> dati[i];
     }
 
-    // 4. Reinserimento del tensore aggiornato
-    push (s, a);
+    // 5. Aggiornamento stack e pulizia
+    push(s, c);
+    rilascia_tensore(a);
 }
 
 /* --- MINIMO (m) ---
@@ -1217,18 +1309,42 @@ void op_somma_riduzione(Stack* s)
     Tensore* a = pop(s);
 
     // 2. Calcolo elementi totali
-    int totale_elementi = 1;
-    for (int i = 0; i < a -> num_dim; i++)
+    long totale_elementi = (long)numero_elementi(a);
+
+    // 3. Somma parallela: ogni thread somma un blocco fisso e poi sommo i parziali in ordine,
+    //    cosi' il risultato e' sempre lo stesso (con reduction l'ordine non e' garantito)
+    int max_thread = omp_get_max_threads();
+    double* parziali = (double*)calloc((size_t)max_thread, sizeof(double));
+    if (parziali == NULL)
     {
-        totale_elementi *= a -> forma[i]; 
+        perror("Errore: Impossibile allocare memoria per la riduzione (S)");
+        exit(EXIT_FAILURE);
     }
 
-    // 3. Somma sequenziale per garantire il determinismo nei test di uguaglianza (No OpenMP)
-    float somma_totale = 0.0f;
-    for (int i = 0; i < totale_elementi; i++)
+    int num_thread_usati = 1;
+    #pragma omp parallel
     {
-        somma_totale += a -> dati[i];
+        int id = omp_get_thread_num();
+        double somma_locale = 0.0;
+
+        #pragma omp single
+        num_thread_usati = omp_get_num_threads();
+
+        #pragma omp for schedule(static)
+        for (long i = 0; i < totale_elementi; i++)
+        {
+            somma_locale += a -> dati[i];
+        }
+        parziali[id] = somma_locale;
     }
+
+    double somma_double = 0.0;
+    for (int t = 0; t < num_thread_usati; t++)
+    {
+        somma_double += parziali[t];
+    }
+    free(parziali);
+    float somma_totale = (float)somma_double;
 
     // 4. Creazione del nuovo tensore scalare (1D, 1 elemento)
     int32_t forma_c[1] = {1};
@@ -1305,6 +1421,23 @@ void op_stampa(Stack* s)
     rilascia_tensore(a);    
 }
 
+/* --- DUPLICA_ELEMENTO ---
+    -> Inserisce in cima una copia logica dell'elemento del nodo (usata da 'd' e 'o').
+    -> Per i tensori incrementa solo il reference counter, le stringhe vengono copiate.
+*/
+static void duplica_elemento(Stack* s, NodoStack* nodo)
+{
+    if (nodo -> tipo == ELEM_TENSORE)
+    {
+        trattieni_tensore(nodo -> tensore);
+        push(s, nodo -> tensore);
+    }
+    else
+    {
+        push_stringa(s, nodo -> stringa);
+    }
+}
+
 /* --- DUPLICAZIONE (d) ---
     -> Duplica l'elemento in cima allo stack.
     -> Ottimizzazione: non copia i dati fisici, incrementa solo il reference counter.
@@ -1312,21 +1445,13 @@ void op_stampa(Stack* s)
 */
 void op_duplica(Stack* s)
 {
-    // 1. Controllo sicurezza
     if (s == NULL || s -> cima == NULL)
     {
         fprintf(stderr, "Errore: Impossibile duplicare (d), stack vuoto.\n");
         exit(EXIT_FAILURE);
     }
 
-    // 2. Leggo il tensore in cima senza estrarlo
-    Tensore* a = s -> cima -> tensore;
-
-    // 3. Incremento il contatore dei riferimenti
-    trattieni_tensore(a);
-
-    // 4. Inserisco un nuovo nodo nello stack che punta allo stesso tensore
-    push(s, a);
+    duplica_elemento(s, s -> cima);
 }
 
 /* --- SCAMBIO (s) ---
@@ -1335,13 +1460,18 @@ void op_duplica(Stack* s)
 */
 void op_scambia(Stack* s)
 {
-    // 1. Estrazione
-    Tensore* a = pop(s);
-    Tensore* b = pop(s);
+    if (s == NULL || s -> cima == NULL || s -> cima -> prossimo == NULL)
+    {
+        fprintf(stderr, "Errore: Impossibile eseguire swap (s), stack con meno di due elementi.\n");
+        exit(EXIT_FAILURE);
+    }
 
-    // 2. Reinserimento in ordine inverso
-    push(s, a);
-    push(s, b);
+    NodoStack* a = s -> cima;
+    NodoStack* b = a -> prossimo;
+
+    a -> prossimo = b -> prossimo;
+    b -> prossimo = a;
+    s -> cima = b;
 }
 
 /* --- DROP (D) ---
@@ -1350,49 +1480,42 @@ void op_scambia(Stack* s)
 */
 void op_drop(Stack* s)
 {
-    Tensore* a = pop(s);
-    rilascia_tensore(a);
+    libera_nodo(pop_nodo(s));
 }
 
 /* --- OVER (o) ---
     -> Duplica il secondo elemento dello stack e lo mette in cima.
     -> Ottimizzazione: come 'd', incrementa solo il reference counter.
-    -> Notazione: a b -- a b a
+    -> Notazione: b a -- b a b
 */
 void op_over(Stack* s)
 {
-    // 1. Controllo sicurezza (servono almeno due elementi)
     if (s == NULL || s -> cima == NULL || s -> cima -> prossimo == NULL)
     {
-        fprintf(stderr, "Errore: Impossibile eseguire over (o), stack con meno di due elementi .\n");
+        fprintf(stderr, "Errore: Impossibile eseguire over (o), stack con meno di due elementi.\n");
         exit(EXIT_FAILURE);
     }
 
-    // 2. Leggo il secondo tensore
-    Tensore* a = s -> cima -> prossimo -> tensore;
-
-    // 3. Incremento il contatore dei riferimenti di 'a'
-    trattieni_tensore(a);
-
-    // 4. Inserisco il nuovo riferimento in cima allo stack
-    push(s, a);
+    duplica_elemento(s, s -> cima -> prossimo);
 }
 
 
 /* ----------   PARTE 11: INPUT/OUTPUT   ---------- */
 
 /* --- LETTURA PGM '(' ---
-    -> Legge un'immagine PGM in formato testo (scala di grigi).
-    -> La carica nello stack come matrice 2D.
+    -> Legge un'immagine PGM binaria (P5) e la carica nello stack come matrice 2D.
     -> Normalizza i pixel: trasforma i numeri da 0-255 in float da 0.0 a 1.0.
     -> Notazione: filename -- tensor
 */
-void op_leggi_pgm(Stack* s, const char* nome_file)
+void op_leggi_pgm(Stack* s)
 {
+    char* nome_file = pop_stringa(s);
+
     FILE* file = fopen(nome_file, "rb");
     if (!file)
     {
         fprintf(stderr, "Errore: Impossibile aprire il file %s.\n", nome_file);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1404,6 +1527,7 @@ void op_leggi_pgm(Stack* s, const char* nome_file)
     {
         fprintf(stderr, "Errore: Formato PGM non valido o file non supportato (%s).\n", nome_file);
         fclose(file);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1411,6 +1535,7 @@ void op_leggi_pgm(Stack* s, const char* nome_file)
     {
         fprintf(stderr, "Errore: Colonne non valide nel file PGM %s.\n", nome_file);
         fclose(file);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1418,6 +1543,7 @@ void op_leggi_pgm(Stack* s, const char* nome_file)
     {
         fprintf(stderr, "Errore: Righe non valide nel file PGM %s.\n", nome_file);
         fclose(file);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1425,6 +1551,7 @@ void op_leggi_pgm(Stack* s, const char* nome_file)
     {
         fprintf(stderr, "Errore: Valore massimo pixel non valido nel file PGM %s.\n", nome_file);
         fclose(file);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1438,6 +1565,7 @@ void op_leggi_pgm(Stack* s, const char* nome_file)
         perror("Errore: Impossibile allocare memoria per il buffer PGM");
         fclose(file);
         rilascia_tensore(img);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1448,9 +1576,12 @@ void op_leggi_pgm(Stack* s, const char* nome_file)
         free(pixel_buffer);
         fclose(file);
         rilascia_tensore(img);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
+    // Normalizzazione dei pixel (parallela)
+    #pragma omp parallel for
     for (size_t i = 0; i < totale_pixel; i++)
     {
         img->dati[i] = (float)pixel_buffer[i] / (float)max_val;
@@ -1458,20 +1589,25 @@ void op_leggi_pgm(Stack* s, const char* nome_file)
 
     free(pixel_buffer);
     fclose(file);
+    free(nome_file);
     push(s, img);
 }
 
 /* --- SCRITTURA PGM ')' ---
-    -> Salva un tensore 2D (presente in cima allo stack) come immagine PGM.
+    -> Salva un tensore 2D come immagine PGM binaria (P5).
     -> Denormalizza i pixel: riporta i float (0.0-1.0) al formato intero (0-255).
     -> Notazione: a filename --
 */
-void op_scrivi_pgm(Stack* s, const char* nome_file)
+void op_scrivi_pgm(Stack* s)
 {
+    char* nome_file = pop_stringa(s);
     Tensore* img = pop(s);
+
     if (img -> num_dim != 2)
     {
         fprintf(stderr, "Errore: La scrittura PGM richiede un tensore 2D.\n");
+        rilascia_tensore(img);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1479,6 +1615,8 @@ void op_scrivi_pgm(Stack* s, const char* nome_file)
     if (!file)
     {
         fprintf(stderr, "Errore: Impossibile aprire il file %s.\n", nome_file);
+        rilascia_tensore(img);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1494,15 +1632,18 @@ void op_scrivi_pgm(Stack* s, const char* nome_file)
         perror("Errore: Impossibile allocare memoria per il buffer PGM");
         fclose(file);
         rilascia_tensore(img);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
+    // Conversione in byte con arrotondamento (parallela)
+    #pragma omp parallel for
     for (size_t i = 0; i < totale_pixel; i++)
     {
         float val = img->dati[i];
-        if (val < 0.0f) val = 0.0f;
+        if (!(val > 0.0f)) val = 0.0f;
         if (val > 1.0f) val = 1.0f;
-        pixel_buffer[i] = (unsigned char)(val * 255.0f);
+        pixel_buffer[i] = (unsigned char)(val * 255.0f + 0.5f);
     }
 
     size_t written = fwrite(pixel_buffer, 1, totale_pixel, file);
@@ -1512,25 +1653,45 @@ void op_scrivi_pgm(Stack* s, const char* nome_file)
         free(pixel_buffer);
         fclose(file);
         rilascia_tensore(img);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
     free(pixel_buffer);
-    fclose(file);
+    if (fclose(file) != 0)
+    {
+        fprintf(stderr, "Errore: chiusura del file %s fallita.\n", nome_file);
+        rilascia_tensore(img);
+        free(nome_file);
+        exit(EXIT_FAILURE);
+    }
     rilascia_tensore(img);
+    free(nome_file);
+}
+
+/* --- OFFSET_DATI ---
+    -> Ritorna il primo offset multiplo di 64 byte dopo l'intestazione (cioe' 64).
+*/
+static off_t offset_dati(void)
+{
+    off_t dim_header = (off_t)sizeof(struct on_disk_tensor);
+    return ((dim_header + ALLINEAMENTO_DATI - 1) / ALLINEAMENTO_DATI) * ALLINEAMENTO_DATI;
 }
 
 /* --- LETTURA BINARIA MAPPATA '{' ---
-    -> Mappa in memoria l'intero file binario senza copiarne i dati in RAM.
-    -> Legge e decodifica l'intestazione di 64 byte richiesta dal PDF del professore.
+    -> Mappa in memoria il file binario con mmap, senza copiarne i dati in RAM.
+    -> Legge e controlla l'intestazione 'struct on_disk_tensor'.
     -> Notazione: filename -- tensor
 */
-void op_leggi_binario(Stack* s, const char* nome_file)
+void op_leggi_binario(Stack* s)
 {
+    char* nome_file = pop_stringa(s);
+
     int fd = open(nome_file, O_RDONLY);
     if (fd == -1)
     {
-        perror("Errore apertura file binario");
+        fprintf(stderr, "Errore: Impossibile aprire il file binario %s.\n", nome_file);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1539,6 +1700,7 @@ void op_leggi_binario(Stack* s, const char* nome_file)
     {
         perror("Errore fstat file binario");
         close(fd);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1547,6 +1709,7 @@ void op_leggi_binario(Stack* s, const char* nome_file)
     {
         fprintf(stderr, "Errore: File binario %s troppo piccolo per contenere l'intestazione.\n", nome_file);
         close(fd);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1555,73 +1718,96 @@ void op_leggi_binario(Stack* s, const char* nome_file)
     {
         perror("Errore mmap");
         close(fd);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
     close(fd);
 
+    // 1. Controllo dell'intestazione
     struct on_disk_tensor* hdr = (struct on_disk_tensor*)mapped;
     if (hdr->ndim <= 0 || hdr->ndim > MAX_DIM)
     {
         fprintf(stderr, "Errore: Numero di dimensioni non valido nel file binario %s.\n", nome_file);
         munmap(mapped, fs);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
-    Tensore* t = (Tensore*)malloc(sizeof(Tensore));
-    if (t == NULL)
-    {
-        perror("Errore: Impossibile allocare memoria per il tensore mappato");
-        munmap(mapped, fs);
-        exit(EXIT_FAILURE);
-    }
-
-    t->num_dim = hdr->ndim;
+    int32_t forma[MAX_DIM] = {0};
     size_t totale_elementi = 1;
-    for (int i = 0; i < t->num_dim; i++)
+    for (int i = 0; i < hdr->ndim; i++)
     {
         if (hdr->shape[i] <= 0)
         {
             fprintf(stderr, "Errore: Forma non valida nel file binario %s.\n", nome_file);
-            free(t);
             munmap(mapped, fs);
+            free(nome_file);
             exit(EXIT_FAILURE);
         }
-        t->forma[i] = hdr->shape[i];
+        forma[i] = hdr->shape[i];
         totale_elementi *= (size_t)hdr->shape[i];
     }
 
-    if (hdr->data_offset < (int64_t)sizeof(struct on_disk_tensor) || (size_t)hdr->data_offset + totale_elementi * sizeof(float) > fs)
+    if (hdr->data_offset < (off_t)sizeof(struct on_disk_tensor)
+        || hdr->data_offset % ALLINEAMENTO_DATI != 0
+        || (size_t)hdr->data_offset > fs
+        || totale_elementi > (fs - (size_t)hdr->data_offset) / sizeof(float))
     {
-        fprintf(stderr, "Errore: Data offset non valido nel file binario %s.\n", nome_file);
-        free(t);
+        fprintf(stderr, "Errore: Data offset non valido o file troncato (%s).\n", nome_file);
         munmap(mapped, fs);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
-    t->contatore_rif = 1;
-    t->mmap_attivo = 1;
-    t->mmap_size = fs;
-    t->mmap_ptr = mapped;
-    t->dati = (float*)((char*)mapped + hdr->data_offset);
+    // 2. Il buffer punta direttamente ai dati mappati
+    BufferDati* buffer = (BufferDati*)malloc(sizeof(BufferDati));
+    Tensore* t = (Tensore*)malloc(sizeof(Tensore));
+    if (buffer == NULL || t == NULL)
+    {
+        perror("Errore: Impossibile allocare memoria per il tensore mappato");
+        free(buffer);
+        free(t);
+        munmap(mapped, fs);
+        free(nome_file);
+        exit(EXIT_FAILURE);
+    }
 
+    buffer->dati = (float*)((char*)mapped + hdr->data_offset);
+    buffer->contatore_rif = 1;
+    buffer->mmap_attivo = 1;
+    buffer->mmap_size = fs;
+    buffer->mmap_ptr = mapped;
+
+    t->num_dim = hdr->ndim;
+    for (int i = 0; i < MAX_DIM; i++)
+    {
+        t->forma[i] = forma[i];
+    }
+    t->buffer = buffer;
+    t->dati = buffer->dati;
+    t->contatore_rif = 1;
+
+    free(nome_file);
     push(s, t);
 }
 
 /* --- SCRITTURA BINARIA '}' ---
-    -> Salva il tensore su disco costruendo un file binario allineato a 64 byte.
-    -> Scrive la 'struct on_disk_tensor' nei primi 64 byte, seguita dai dati grezzi.
+    -> Salva il tensore su disco: intestazione, padding fino a 64 byte e poi i dati.
     -> Notazione: a filename --
 */
-void op_scrivi_binario(Stack* s, const char* nome_file)
+void op_scrivi_binario(Stack* s)
 {
-    // 1. Estrazione operando 
+    // 1. Estrazione operandi
+    char* nome_file = pop_stringa(s);
     Tensore* t = pop(s);
 
-    // 2. Apertura del file in modalità scrittura binaria grezza (wb)
+    // 2. Apertura del file in modalità scrittura binaria
     FILE* f = fopen(nome_file, "wb");
     if (!f)
     {
         fprintf(stderr, "Errore: Impossibile creare il file binario %s.\n", nome_file);
+        rilascia_tensore(t);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
@@ -1634,38 +1820,35 @@ void op_scrivi_binario(Stack* s, const char* nome_file)
     { 
         hdr.shape[i] = t -> forma[i]; 
     }     
-    hdr.data_offset = 64; // I dati inizieranno esattamente al byte 64
+    hdr.data_offset = offset_dati();
 
-    // 4. Scrittura massiva su disco
-    char buffer[64] ={0};
-    memcpy(buffer, &hdr, sizeof(struct on_disk_tensor));
-    
-    // Scrivo l'intestazione una sola volta (64 byte esatti)
-    if (fwrite(buffer, 1, 64, f) != 64)
+    // 4. Scrittura di intestazione e padding (64 byte)
+    char blocco_header[ALLINEAMENTO_DATI * 2] = {0};
+    size_t dim_blocco = (size_t)hdr.data_offset;
+    memcpy(blocco_header, &hdr, sizeof(struct on_disk_tensor));
+
+    if (fwrite(blocco_header, 1, dim_blocco, f) != dim_blocco)
     {
         fprintf(stderr, "Errore: scrittura intestazione binaria fallita per %s.\n", nome_file);
         fclose(f);
         rilascia_tensore(t);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
-    // Calcolo quanti float devo scrivere in totale
-    size_t totale_elementi = 1;
-    for (int i = 0; i < t -> num_dim; i++) 
-    { 
-        totale_elementi *= t -> forma[i]; 
-    }
-    
-    // Scrivo tutti i dati float in un colpo solo
-    if (fwrite(t -> dati, sizeof(float), totale_elementi, f) != totale_elementi)
+    // 5. Scrittura di tutti i dati float in un colpo solo
+    size_t totale_elementi = numero_elementi(t);
+    size_t scritti = fwrite(t -> dati, sizeof(float), totale_elementi, f);
+    int esito_chiusura = fclose(f);
+    if (scritti != totale_elementi || esito_chiusura != 0)
     {
         fprintf(stderr, "Errore: scrittura dati binari incompleta per %s.\n", nome_file);
-        fclose(f);
         rilascia_tensore(t);
+        free(nome_file);
         exit(EXIT_FAILURE);
     }
 
-    // 5. Chiusura e pulizia
-    fclose(f);
+    // 6. Pulizia
     rilascia_tensore(t);
+    free(nome_file);
 }

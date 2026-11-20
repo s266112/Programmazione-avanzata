@@ -17,14 +17,15 @@
 #include <unistd.h>
 
 // Struttura richiesta per l'intestazione dei file binari.
-// Deve occupare esattamente 64 byte nel file.
+// I dati iniziano a data_offset (64 byte, allineati), dopo un po' di padding.
 struct on_disk_tensor {
     int32_t shape[MAX_DIM];
     int32_t ndim;
-    int32_t reserved0;      // allinea data_offset a 8 byte
-    int64_t data_offset;
-    char reserved[40];      // padding per arrivare a 64 byte totali
+    off_t data_offset;
 };
+
+// Allineamento dei dati nel file binario
+#define ALLINEAMENTO_DATI 64
 
 
 /* ----------   PARTE 1: TENSORI   ---------- */
@@ -258,10 +259,3 @@ void op_leggi_binario(Stack* s);
 void op_scrivi_binario(Stack* s);
 
 #endif
-
-
-
-
-
-
-

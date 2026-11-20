@@ -2,7 +2,7 @@
 
 # Definisco il compilatore 
 CC = gcc
-CFLAGS = -Wall -Wextra -fopenmp
+CFLAGS = -Wall -Wextra -O2 -fopenmp
 
 # Nome dell'eseguibile
 TARGET = tensorforth
