@@ -2,71 +2,99 @@
 
 ## Descrizione
 
-Questo progetto implementa un piccolo renderer grafico 2D in stile retro scritto interamente in Python. Il sistema gestisce una palette indicizzata di 16 colori, disegna un fondale a griglia tramite una tile map e sovrappone una serie di sprite con supporto alla trasparenza. Il risultato finale della composizione viene esportato in formato PNG.
+Questo progetto implementa un piccolo renderer 2D in stile retro in Python. Il sistema usa una palette indicizzata di 16 colori, disegna il fondale tramite una tile map e sovrappone gli sprite con trasparenza. Il risultato viene convertito in RGB ed esportato in PNG.
 
 ## Funzionalità principali ✨
 
-- Gestione di una palette a 16 colori RGB caricata da JSON
-- Decodifica di file binari 4-bit packed per la memoria video (VRAM)
-- Rendering del fondale tramite una tile map di 20x15 tile (32x32 pixel ciascuno)
-- Gestione di sprite 64x64 pixel su griglia 4x4
-- Trasformazioni matematiche: ribaltamenti (`flip_h`, `flip_v`) e rotazioni (0°, 90°, 180°, 270°)
-- Clipping geometrico per ritagliare correttamente gli sprite sui bordi dello schermo
-- Esportazione nativa in formato PNG indicizzato (modalità 'P' di Pillow)
+* Palette di 16 colori RGB caricata e validata da JSON
+* Decodifica dei file binari 4-bit packed di tile sheet e sprite sheet
+* Fondale tramite tile map 20x15 con tile 32x32
+* Sprite 64x64 da uno sprite sheet 4x4
+* Ribaltamenti `flip_h`, `flip_v` e rotazioni di 0°, 90°, 180°, 270°
+* Trasparenza sugli sprite tramite `transparent_index`
+* Clipping degli sprite che escono dallo schermo
+* Conversione del frame buffer in RGB ed esportazione in PNG
 
 ## Requisiti 🛠️
 
-Il software fa uso di librerie esterne per l'elaborazione matriciale ad alte prestazioni e per il salvataggio dell'immagine finale.
+Per installare le dipendenze:
 
-Per installare le dipendenze necessarie:
-
-```bash
+```
 pip install numpy pillow
+```
+
+## Avvio (WSL) 🐧
+
+```
+cd /mnt/c/Users/kokin/Desktop/Prog_Script/Programmazione-avanzata
+source .venv_pap/bin/activate
+cd "Progetto Python (Esame)"
+```
+
+Per pulire i file generati:
+
+```
+rm -f output.png
+rm -rf __pycache__
 ```
 
 ## Esecuzione ▶️
 
-Il renderer viene eseguito da riga di comando passandogli i percorsi di tutti gli asset necessari per comporre la scena. L'ordine degli argomenti è rigido e predefinito.
+Il renderer si esegue da riga di comando nella forma:
 
-Esempio di esecuzione con i file di test:
+```
+python3 main.py <palette.json> <scene.json> <tiles.bin> <sprites.bin> <output.png>
+```
 
-```bash
-python main.py example/palette.json example/scene.json example/tiles.bin example/sprites.bin output.png
+Esempio:
+
+```
+python3 main.py example/palette.json example/scene.json example/tiles.bin example/sprites.bin output.png
 ```
 
 ## Esempi forniti 📁
 
-Nella cartella `example/` sono presenti gli asset forniti per testare il motore:
-- `palette.json` – Definizione dei 16 colori disponibili
-- `scene.json` – Struttura della mappa, indice di trasparenza e direttive di trasformazione sprite
-- `tiles.bin` e `sprites.bin` – Texture in formato binario compresso a 4 bit
+Nella cartella `example/` trovi gli asset per testare il renderer:
+
+* `palette.json` – palette di 16 colori
+* `scene.json` – tile map, indice di trasparenza e sprite con le trasformazioni
+* `tiles.bin` – tile sheet 256x256 in formato 4-bit packed
+* `sprites.bin` – sprite sheet 256x256 in formato 4-bit packed
+* `reference.png` – immagine attesa per la scena di esempio
 
 ## Note implementative 🧠
 
-- La libreria `numpy` gestisce i frame buffer tramite il tipo `np.uint8`, garantendo conversioni bit a bit rapidissime e un ridotto consumo di RAM.
-- Il caricamento dei binari usa shift bit a bit (`>>` e `& 0x0F`) per separare i pixel.
-- La libreria `Pillow` è utilizzata esclusivamente nell'ultimo passaggio di pipeline per codificare l'array 2D indicizzato nel file fisicamente compresso `.png`.
+* `Palette` – carica la palette e risolve un indice nel colore RGB
+* `VirtualVRAM` – decodifica i nibble con `>> 4` (primo pixel) e `& 0x0F` (secondo pixel)
+* `SceneParser` – carica e valida la scena (id dei tile 0..63, id degli sprite 0..15, rotazioni ammesse)
+* `Blitter` – estrae tile e sprite, applica flip, poi rotazione (in senso orario), clipping e trasparenza
+* `ImageExporter` – converte in RGB con `numpy` usando il frame buffer come indice nella palette
+* `RenderingPipeline` (in `main.py`) – esegue tutta la composizione della scena
+* Tutti gli array usano `np.uint8`, `Pillow` serve solo per salvare il PNG
+* La trasparenza vale solo per gli sprite, non per il fondale
+* Gli id dei tile vengono convertiti in `int` prima dei calcoli, per evitare l'overflow di `np.uint8` con NumPy 2
 
 ## Stato dei test ✅
 
-Tutti i componenti modulari dell'architettura e la pipeline principale sono stati testati con successo sugli asset forniti. Le geometrie degli sprite (64x64) rispettano perfettamente i vincoli dell'area di disegno.
+L'immagine generata dalla scena di esempio coincide pixel per pixel con `example/reference.png`.
 
 ## Verifica utilizzata 🔍
 
-L'architettura è stata sviluppata a moduli isolati. Comandi eseguiti per la validazione di ogni singola classe:
+Ogni modulo si può eseguire da solo per testare la propria classe:
 
-```bash
-python palette.py example/palette.json
-python vram.py example/tiles.bin example/sprites.bin
-python scene_parser.py example/scene.json
-python blitter.py example/scene.json example/tiles.bin example/sprites.bin
-python image_exporter.py example/palette.json example/scene.json example/tiles.bin example/sprites.bin output.png
+```
+python3 palette.py example/palette.json
+python3 vram.py example/tiles.bin example/sprites.bin
+python3 scene_parser.py example/scene.json
+python3 blitter.py example/scene.json example/tiles.bin example/sprites.bin
+python3 image_exporter.py example/palette.json example/scene.json example/tiles.bin example/sprites.bin output.png
+python3 main.py example/palette.json example/scene.json example/tiles.bin example/sprites.bin output.png
 ```
 
----
+## Avvertenze ⚠️
 
-### Avvertenze ⚠️
-
-- Il programma accetta input esclusivamente da argomenti riga di comando, non sono previste modalità interattive.
-- I file JSON devono rispettare le chiavi standard (`transparent_index`, `tile_map`, `sprites`).
-- Il file binario sorgente delle texture deve avere dimensione esatta di 32768 byte (256x256 pixel a 4-bit).
+* Il programma accetta input solo da riga di comando, non ci sono modalità interattive
+* La scena deve contenere `transparent_index`, `tile_map` e `sprites`; ogni sprite deve avere `id`, `x`, `y`, `flip_h`, `flip_v` e `rotation`
+* `rotation` può valere solo 0, 90, 180 o 270
+* I file binari devono essere di esattamente 32768 byte
+* In caso di errore vengono sollevate eccezioni specifiche (`FileNotFoundError`, `ValueError`, `TypeError`, `KeyError`) e il programma termina con codice 1

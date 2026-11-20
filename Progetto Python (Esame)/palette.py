@@ -9,7 +9,7 @@ Legge una palette JSON con 16 colori RGB e la converte in un array numpy.
 
 import json
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 import numpy as np
 
@@ -25,6 +25,7 @@ class Palette:
 
     def _load_palette(self, filepath: str) -> np.ndarray:
         # Carico il file JSON e converto i colori in un array numpy uint8
+        # Input: percorso del file. Output: array numpy 16x3 di tipo uint8
         path = Path(filepath)
         if not path.exists():
             raise FileNotFoundError(f"File non trovato: {filepath}")
@@ -35,27 +36,29 @@ class Palette:
             content = path.read_text(encoding='utf-8')
             data = json.loads(content)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"Errore nel parsing JSON di {filepath}: {exc}")
+            raise ValueError(f"Errore nel parsing JSON di {filepath}: {exc}") from exc
 
         if not isinstance(data, list):
             raise TypeError("La palette deve essere una lista JSON.")
         if len(data) != self.COLOR_COUNT:
             raise ValueError(f"La palette deve contenere esattamente {self.COLOR_COUNT} colori; trovati {len(data)}.")
 
-        validated_colors: List[tuple[int, int, int]] = []
+        validated_colors: List[Tuple[int, int, int]] = []
         for index, entry in enumerate(data):
             validated_colors.append(self._validate_color_entry(entry, index))
 
         return np.array(validated_colors, dtype=np.uint8)
 
-    def _validate_color_entry(self, entry: object, index: int) -> Tuple[int, int, int]:
+    def _validate_color_entry(self, entry: Any, index: int) -> Tuple[int, int, int]:
         # Controlla che l'elemento sia una lista RGB valida di tre interi.
+        # Input: colore letto dal JSON e sua posizione. Output: tupla (R, G, B)
         if not isinstance(entry, list) or len(entry) != 3:
             raise ValueError(f"Colore {index} non valido: deve essere una lista di 3 interi RGB.")
 
         r, g, b = entry
         for channel_name, channel_value in (("r", r), ("g", g), ("b", b)):
-            if not isinstance(channel_value, int):
+            # Escludo i bool: in Python True/False sono considerati int
+            if not isinstance(channel_value, int) or isinstance(channel_value, bool):
                 raise TypeError(
                     f"Componente {channel_name} del colore {index} non è un intero: {channel_value!r}"
                 )
@@ -69,7 +72,7 @@ class Palette:
 
     def get_color(self, index: int) -> Tuple[int, int, int]:
         # Restituisce il colore RGB corrispondente all'indice 0..15.
-        if not isinstance(index, int):
+        if not isinstance(index, int) or isinstance(index, bool):
             raise TypeError("L'indice deve essere un intero.")
         if not (0 <= index < self.COLOR_COUNT):
             raise IndexError(
@@ -78,19 +81,8 @@ class Palette:
         return tuple(self._colors[index].tolist())
 
     def as_numpy(self) -> np.ndarray:
-        # Ritorna una copia dell'array numpy dei colori
+        # Ritorna una copia dell'array numpy dei colori (16x3), usata per convertire in RGB
         return self._colors.copy()
-
-    def to_pillow_palette(self) -> List[int]:
-        # Restituisce una lista di 768 interi compatibile con Pillow Image.putpalette()
-        flat_palette: List[int] = []
-        for r, g, b in self._colors.tolist():
-            flat_palette.extend([int(r), int(g), int(b)])
-
-        padding = 256 * 3 - len(flat_palette)
-        if padding > 0:
-            flat_palette.extend([0] * padding)
-        return flat_palette
 
 # Test di prova
 if __name__ == '__main__':
@@ -100,12 +92,7 @@ if __name__ == '__main__':
         print('Uso: python palette.py <palette.json>')
         raise SystemExit(1)
 
-    try:
-        palette = Palette(sys.argv[1])
-        print('Palette caricata correttamente.')
-        print('Colore indice 0:', palette.get_color(0))
-        print('Numero colori:', palette.as_numpy().shape[0])
-        print('Lunghezza palette Pillow:', len(palette.to_pillow_palette()))
-    except Exception as exc:
-        print('Errore:', exc)
-        raise
+    palette = Palette(sys.argv[1])
+    print('Palette caricata correttamente.')
+    print('Colore indice 0:', palette.get_color(0))
+    print('Numero colori:', palette.as_numpy().shape[0])

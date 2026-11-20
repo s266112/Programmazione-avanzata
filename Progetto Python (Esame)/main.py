@@ -25,6 +25,9 @@ class RenderingPipeline:
         self.output_path = output_path
 
     def run(self) -> None:
+        # Eseguo l'intera pipeline: carico gli asset, compongo la scena, converto in RGB e salvo il PNG.
+        # Input: nessuno (uso i percorsi salvati). Output: nessuno, scrive il file PNG su disco
+
         # 1. Carico e valido la palette
         palette = Palette(self.palette_path)
 
@@ -42,7 +45,7 @@ class RenderingPipeline:
         blitter.draw_sprites()
         frame_buffer = blitter.get_frame_buffer()
 
-        # 5. Converto il frame buffer usando la palette e lo esporto su disco
+        # 5. Converto il frame buffer in RGB usando la palette e lo esporto su disco
         exporter = ImageExporter(palette)
         exporter.export(frame_buffer, self.output_path)
 
@@ -50,7 +53,7 @@ class RenderingPipeline:
 if __name__ == '__main__':
     # Mi assicuro che l'utente fornisca esattamente i 5 file richiesti
     if len(sys.argv) != 6:
-        print("Uso: python main.py <palette.json> <scene.json> <tiles.bin> <sprites.bin> <output.png>")
+        print("Uso: python main.py <palette.json> <scene.json> <tiles.bin> <sprites.bin> <output.png>", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -62,12 +65,12 @@ if __name__ == '__main__':
             sprites_path=sys.argv[4],
             output_path=sys.argv[5]
         )
-        
+
         # Avvio il processo
         pipeline.run()
         print(f"Rendering completato con successo! Immagine salvata in: {sys.argv[5]}")
 
-    except Exception as exc:
-        # Catturo eventuali errori sollevati dai moduli e li mostro a video
-        print(f"Errore durante l'esecuzione: {exc}")
+    except (OSError, ValueError, TypeError, KeyError, IndexError, RuntimeError) as exc:
+        # Catturo gli errori previsti sollevati dai moduli e mostro tipo e messaggio
+        print(f"Errore durante l'esecuzione ({type(exc).__name__}): {exc}", file=sys.stderr)
         sys.exit(1)

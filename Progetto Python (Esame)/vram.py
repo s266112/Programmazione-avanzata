@@ -2,7 +2,7 @@
 # Nome: Alessio
 # Matricola: SM3201657
 
-"""Virtual_vram.py
+"""vram.py
 
 Decodifica i file binari packed a 4-bit di tile sheet e sprite sheet
 convertendoli in matrici indicizzate numpy 256x256.
@@ -23,6 +23,7 @@ class VirtualVRAM:
 
     def _load_packed_binary(self, filepath: str) -> np.ndarray:
         # Legge e decodifica un file binario 4-bit packed in una matrice numpy
+        # Input: percorso del file .bin. Output: matrice 256x256 np.uint8 di indici di palette (0..15)
         path = Path(filepath)
 
         if not path.exists():
@@ -35,7 +36,7 @@ class VirtualVRAM:
         # Valido la dimensione del file
         if len(raw_data) != self.EXPECTED_BYTES:
             raise ValueError(
-                f"Dimensione del file errata per {filepath}."
+                f"Dimensione del file errata per {filepath}. "
                 f"Attesi {self.EXPECTED_BYTES} byte, trovati {len(raw_data)}."
             )
 
@@ -67,10 +68,10 @@ class VirtualVRAM:
         return self.tile_sheet
 
     def get_sprite_sheet(self) -> np.ndarray:
-            # Restituisce la matrice dello sprite sheet, sollevando un errore se non carica
-            if self.sprite_sheet is None:
-                raise RuntimeError("Sprite sheet non ancora caricato.")
-            return self.sprite_sheet
+        # Restituisce la matrice dello sprite sheet, sollevando un errore se non carica
+        if self.sprite_sheet is None:
+            raise RuntimeError("Sprite sheet non ancora caricato.")
+        return self.sprite_sheet
 
 
 # Test di prova
@@ -82,13 +83,9 @@ if __name__ == '__main__':
         print("Uso: python vram.py <tiles.bin> <sprites.bin>")
         raise SystemExit(1)
         
-    try:
-        vram = VirtualVRAM()
-        vram.load_tiles(sys.argv[1])
-        vram.load_sprites(sys.argv[2])
-        print("VirtualVRAM caricata con successo!")
-        print("Shape Tile Sheet:", vram.get_tile_sheet().shape, "- Dtype:", vram.get_tile_sheet().dtype)
-        print("Shape Sprite Sheet:", vram.get_sprite_sheet().shape, "- Dtype:", vram.get_sprite_sheet().dtype)
-    except Exception as exc:
-        print("Errore:", exc)
-        raise
+    vram = VirtualVRAM()
+    vram.load_tiles(sys.argv[1])
+    vram.load_sprites(sys.argv[2])
+    print("VirtualVRAM caricata con successo!")
+    print("Shape Tile Sheet:", vram.get_tile_sheet().shape, "- Dtype:", vram.get_tile_sheet().dtype)
+    print("Shape Sprite Sheet:", vram.get_sprite_sheet().shape, "- Dtype:", vram.get_sprite_sheet().dtype)
